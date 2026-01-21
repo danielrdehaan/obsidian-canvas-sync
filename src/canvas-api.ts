@@ -2,9 +2,12 @@ import { requestUrl, RequestUrlParam } from 'obsidian';
 import type {
 	CanvasPage,
 	CanvasDiscussion,
+	CanvasAssignment,
 	CanvasModule,
 	CanvasModuleItem,
 	CanvasCourse,
+	CreateAssignmentData,
+	UpdateAssignmentData,
 } from './types';
 
 /**
@@ -266,6 +269,95 @@ export class CanvasApi {
 		}
 	}
 
+	// --- Assignments ---
+
+	/**
+	 * Get all assignments in a course
+	 */
+	async getAssignments(courseId: number): Promise<CanvasAssignment[]> {
+		return this.request<CanvasAssignment[]>(
+			'GET',
+			`/courses/${courseId}/assignments?per_page=100`
+		);
+	}
+
+	/**
+	 * Get an assignment by name
+	 */
+	async getAssignmentByName(courseId: number, name: string): Promise<CanvasAssignment | null> {
+		const assignments = await this.getAssignments(courseId);
+		return assignments.find((a) => a.name === name) ?? null;
+	}
+
+	/**
+	 * Create a new assignment
+	 */
+	async createAssignment(
+		courseId: number,
+		data: CreateAssignmentData
+	): Promise<CanvasAssignment> {
+		return this.request<CanvasAssignment>('POST', `/courses/${courseId}/assignments`, {
+			assignment: {
+				name: data.name,
+				description: data.description ?? '',
+				points_possible: data.points_possible ?? 0,
+				due_at: data.due_at ?? null,
+				lock_at: data.lock_at ?? null,
+				unlock_at: data.unlock_at ?? null,
+				submission_types: data.submission_types ?? ['online_upload', 'online_text_entry'],
+				allowed_extensions: data.allowed_extensions,
+				grading_type: data.grading_type ?? 'points',
+				published: data.published ?? true,
+			},
+		});
+	}
+
+	/**
+	 * Update an existing assignment
+	 */
+	async updateAssignment(
+		courseId: number,
+		assignmentId: number,
+		data: UpdateAssignmentData
+	): Promise<CanvasAssignment> {
+		const updateData: Record<string, unknown> = {};
+
+		if (data.name !== undefined) updateData.name = data.name;
+		if (data.description !== undefined) updateData.description = data.description;
+		if (data.points_possible !== undefined) updateData.points_possible = data.points_possible;
+		if (data.due_at !== undefined) updateData.due_at = data.due_at;
+		if (data.lock_at !== undefined) updateData.lock_at = data.lock_at;
+		if (data.unlock_at !== undefined) updateData.unlock_at = data.unlock_at;
+		if (data.submission_types !== undefined) updateData.submission_types = data.submission_types;
+		if (data.allowed_extensions !== undefined) updateData.allowed_extensions = data.allowed_extensions;
+		if (data.grading_type !== undefined) updateData.grading_type = data.grading_type;
+		if (data.published !== undefined) updateData.published = data.published;
+
+		return this.request<CanvasAssignment>(
+			'PUT',
+			`/courses/${courseId}/assignments/${assignmentId}`,
+			{ assignment: updateData }
+		);
+	}
+
+	/**
+	 * Create or update an assignment
+	 */
+	async upsertAssignment(
+		courseId: number,
+		data: CreateAssignmentData
+	): Promise<{ assignment: CanvasAssignment; created: boolean }> {
+		const existing = await this.getAssignmentByName(courseId, data.name);
+
+		if (existing) {
+			const assignment = await this.updateAssignment(courseId, existing.id, data);
+			return { assignment, created: false };
+		} else {
+			const assignment = await this.createAssignment(courseId, data);
+			return { assignment, created: true };
+		}
+	}
+
 	// --- Modules ---
 
 	/**
@@ -379,6 +471,56 @@ export class CanvasApi {
 		const data: Record<string, unknown> = {
 			type: 'Discussion',
 			content_id: discussionId,
+		};
+		if (position !== undefined) {
+			data.position = position;
+		}
+		return this.request<CanvasModuleItem>(
+			'POST',
+			`/courses/${courseId}/modules/${moduleId}/items`,
+			{ module_item: data }
+		);
+	}
+
+	/**
+	 * Add an assignment to a module
+	 */
+	async addAssignmentToModule(
+		courseId: number,
+		moduleId: number,
+		assignmentId: number,
+		position?: number
+	): Promise<CanvasModuleItem> {
+		const data: Record<string, unknown> = {
+			type: 'Assignment',
+			content_id: assignmentId,
+		};
+		if (position !== undefined) {
+			data.position = position;
+		}
+		return this.request<CanvasModuleItem>(
+			'POST',
+			`/courses/${courseId}/modules/${moduleId}/items`,
+			{ module_item: data }
+		);
+	}
+
+	/**
+	 * Add an external URL to a module
+	 */
+	async addExternalUrlToModule(
+		courseId: number,
+		moduleId: number,
+		title: string,
+		externalUrl: string,
+		position?: number,
+		newTab = true
+	): Promise<CanvasModuleItem> {
+		const data: Record<string, unknown> = {
+			type: 'ExternalUrl',
+			title,
+			external_url: externalUrl,
+			new_tab: newTab,
 		};
 		if (position !== undefined) {
 			data.position = position;

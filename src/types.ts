@@ -1,7 +1,28 @@
 /**
  * Canvas content types
  */
-export type CanvasContentType = 'page' | 'discussion' | 'graded_discussion' | 'assignment';
+export type CanvasContentType = 'page' | 'discussion' | 'graded_discussion' | 'assignment' | 'external_url';
+
+/**
+ * Canvas assignment submission types
+ */
+export type SubmissionType =
+	| 'online_upload'
+	| 'online_text_entry'
+	| 'online_url'
+	| 'media_recording'
+	| 'none';
+
+/**
+ * Canvas assignment grading types
+ */
+export type GradingType =
+	| 'pass_fail'
+	| 'percent'
+	| 'letter_grade'
+	| 'gpa_scale'
+	| 'points'
+	| 'not_graded';
 
 /**
  * Canvas frontmatter configuration
@@ -14,6 +35,15 @@ export interface CanvasFrontmatter {
 	points?: number;
 	due_date?: string;
 	position?: number;
+	// Assignment-specific fields
+	submission_types?: SubmissionType[];
+	allowed_extensions?: string[];
+	grading_type?: GradingType;
+	lock_at?: string;
+	unlock_at?: string;
+	// External URL fields
+	url?: string;
+	new_tab?: boolean;
 }
 
 /**
@@ -89,13 +119,19 @@ export interface SyncResult {
 	filePath: string;
 	canvasType: CanvasContentType;
 	title: string;
-	action: 'created' | 'updated' | 'skipped' | 'failed';
+	action: 'created' | 'updated' | 'skipped' | 'failed' | 'ready';
 	error?: string;
 	courseId: number;
 	/** Page URL slug (for pages) */
 	pageUrl?: string;
 	/** Discussion ID (for discussions) */
 	discussionId?: number;
+	/** Assignment ID (for assignments) */
+	assignmentId?: number;
+	/** External URL (for external_url type) */
+	externalUrl?: string;
+	/** Open in new tab (for external_url type) */
+	newTab?: boolean;
 }
 
 /**
@@ -142,9 +178,47 @@ export interface CanvasAssignment {
 	id: number;
 	name: string;
 	description: string;
-	due_at?: string;
+	html_url: string;
+	due_at: string | null;
+	lock_at: string | null;
+	unlock_at: string | null;
 	points_possible: number;
+	submission_types: SubmissionType[];
+	allowed_extensions?: string[];
+	grading_type: GradingType;
 	published: boolean;
+}
+
+/**
+ * Data for creating a Canvas assignment
+ */
+export interface CreateAssignmentData {
+	name: string;
+	description?: string;
+	points_possible?: number;
+	due_at?: string | null;
+	lock_at?: string | null;
+	unlock_at?: string | null;
+	submission_types?: SubmissionType[];
+	allowed_extensions?: string[];
+	grading_type?: GradingType;
+	published?: boolean;
+}
+
+/**
+ * Data for updating a Canvas assignment
+ */
+export interface UpdateAssignmentData {
+	name?: string;
+	description?: string;
+	points_possible?: number;
+	due_at?: string | null;
+	lock_at?: string | null;
+	unlock_at?: string | null;
+	submission_types?: SubmissionType[];
+	allowed_extensions?: string[];
+	grading_type?: GradingType;
+	published?: boolean;
 }
 
 /**

@@ -309,6 +309,52 @@ export class SyncEngine {
 					courseId,
 					discussionId: discussion.id,
 				};
+			} else if (type === 'assignment') {
+				const { assignment, created } = await this.api.upsertAssignment(courseId, {
+					name: title,
+					description: html,
+					points_possible: parsed.canvas.points ?? 0,
+					due_at: parsed.canvas.due_date ?? null,
+					lock_at: parsed.canvas.lock_at ?? null,
+					unlock_at: parsed.canvas.unlock_at ?? null,
+					submission_types: parsed.canvas.submission_types ?? ['online_upload', 'online_text_entry'],
+					allowed_extensions: parsed.canvas.allowed_extensions,
+					grading_type: parsed.canvas.grading_type ?? 'points',
+					published: publish,
+				});
+				return {
+					success: true,
+					filePath: file.path,
+					canvasType: type,
+					title,
+					action: created ? 'created' : 'updated',
+					courseId,
+					assignmentId: assignment.id,
+				};
+			} else if (type === 'external_url') {
+				// External URLs don't create standalone content - they're module items only
+				// Return a "ready" status so the module sync can add it
+				if (!parsed.canvas.url) {
+					return {
+						success: false,
+						filePath: file.path,
+						canvasType: type,
+						title,
+						action: 'failed',
+						error: 'External URL type requires canvas_url in frontmatter',
+						courseId,
+					};
+				}
+				return {
+					success: true,
+					filePath: file.path,
+					canvasType: type,
+					title,
+					action: 'ready',
+					courseId,
+					externalUrl: parsed.canvas.url,
+					newTab: parsed.canvas.new_tab ?? true,
+				};
 			}
 
 			return {
@@ -423,7 +469,9 @@ export class SyncEngine {
 					const existingItems = await this.api.getModuleItems(courseId, canvasModule.id);
 					console.log(`[Sync Engine] Found ${existingItems.length} existing items in module`);
 					const existingPageUrls = new Set(existingItems.filter(i => i.type === 'Page').map(i => i.page_url));
-					const existingContentIds = new Set(existingItems.filter(i => i.type === 'Discussion').map(i => i.content_id));
+					const existingDiscussionIds = new Set(existingItems.filter(i => i.type === 'Discussion').map(i => i.content_id));
+					const existingAssignmentIds = new Set(existingItems.filter(i => i.type === 'Assignment').map(i => i.content_id));
+					const existingExternalUrls = new Set(existingItems.filter(i => i.type === 'ExternalUrl').map(i => i.title));
 
 					// Sync each item in the module
 					let itemPosition = 1;
@@ -457,7 +505,7 @@ export class SyncEngine {
 							}
 
 							// Add item to module if not already present
-							console.log(`[Sync Engine] Attempting to add ${result.canvasType} "${result.title}" to module. pageUrl=${result.pageUrl}, discussionId=${result.discussionId}`);
+							console.log(`[Sync Engine] Attempting to add ${result.canvasType} "${result.title}" to module. pageUrl=${result.pageUrl}, discussionId=${result.discussionId}, assignmentId=${result.assignmentId}, externalUrl=${result.externalUrl}`);
 							try {
 								if (result.canvasType === 'page' && result.pageUrl) {
 									const alreadyExists = existingPageUrls.has(result.pageUrl);
@@ -472,7 +520,7 @@ export class SyncEngine {
 										console.log(`[Sync Engine] Added page to module: ${result.title}`);
 									}
 								} else if ((result.canvasType === 'discussion' || result.canvasType === 'graded_discussion') && result.discussionId) {
-									const alreadyExists = existingContentIds.has(result.discussionId);
+									const alreadyExists = existingDiscussionIds.has(result.discussionId);
 									console.log(`[Sync Engine] Discussion ${result.discussionId} already in module: ${alreadyExists}`);
 									if (!alreadyExists) {
 										await this.api.addDiscussionToModule(
@@ -482,6 +530,32 @@ export class SyncEngine {
 											itemPosition
 										);
 										console.log(`[Sync Engine] Added discussion to module: ${result.title}`);
+									}
+								} else if (result.canvasType === 'assignment' && result.assignmentId) {
+									const alreadyExists = existingAssignmentIds.has(result.assignmentId);
+									console.log(`[Sync Engine] Assignment ${result.assignmentId} already in module: ${alreadyExists}`);
+									if (!alreadyExists) {
+										await this.api.addAssignmentToModule(
+											courseId,
+											canvasModule.id,
+											result.assignmentId,
+											itemPosition
+										);
+										console.log(`[Sync Engine] Added assignment to module: ${result.title}`);
+									}
+								} else if (result.canvasType === 'external_url' && result.externalUrl) {
+									const alreadyExists = existingExternalUrls.has(result.title);
+									console.log(`[Sync Engine] External URL "${result.title}" already in module: ${alreadyExists}`);
+									if (!alreadyExists) {
+										await this.api.addExternalUrlToModule(
+											courseId,
+											canvasModule.id,
+											result.title,
+											result.externalUrl,
+											itemPosition,
+											result.newTab ?? true
+										);
+										console.log(`[Sync Engine] Added external URL to module: ${result.title}`);
 									}
 								}
 							} catch (moduleItemError) {

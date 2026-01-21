@@ -5,6 +5,8 @@ import type {
 	ParsedFile,
 	WikiLink,
 	CanvasContentType,
+	SubmissionType,
+	GradingType,
 } from './types';
 
 /**
@@ -50,6 +52,15 @@ export class FrontmatterParser {
 			points: typeof frontmatter.canvas_points === 'number' ? frontmatter.canvas_points : undefined,
 			due_date: typeof frontmatter.canvas_due_date === 'string' ? frontmatter.canvas_due_date : undefined,
 			position: typeof frontmatter.canvas_position === 'number' ? frontmatter.canvas_position : undefined,
+			// Assignment-specific fields
+			submission_types: this.parseSubmissionTypes(frontmatter.canvas_submission_types),
+			allowed_extensions: this.parseStringArray(frontmatter.canvas_allowed_extensions),
+			grading_type: this.parseGradingType(frontmatter.canvas_grading_type),
+			lock_at: typeof frontmatter.canvas_lock_at === 'string' ? frontmatter.canvas_lock_at : undefined,
+			unlock_at: typeof frontmatter.canvas_unlock_at === 'string' ? frontmatter.canvas_unlock_at : undefined,
+			// External URL fields
+			url: typeof frontmatter.canvas_url === 'string' ? frontmatter.canvas_url : undefined,
+			new_tab: typeof frontmatter.canvas_new_tab === 'boolean' ? frontmatter.canvas_new_tab : true,
 		};
 	}
 
@@ -75,6 +86,7 @@ export class FrontmatterParser {
 			'discussion',
 			'graded_discussion',
 			'assignment',
+			'external_url',
 		];
 
 		if (typeof type === 'string' && validTypes.includes(type as CanvasContentType)) {
@@ -82,6 +94,61 @@ export class FrontmatterParser {
 		}
 
 		return undefined;
+	}
+
+	/**
+	 * Parse submission types array from frontmatter
+	 */
+	private parseSubmissionTypes(value: unknown): SubmissionType[] | undefined {
+		const validTypes: SubmissionType[] = [
+			'online_upload',
+			'online_text_entry',
+			'online_url',
+			'media_recording',
+			'none',
+		];
+
+		if (!Array.isArray(value)) {
+			return undefined;
+		}
+
+		const parsed = value.filter(
+			(v): v is SubmissionType => typeof v === 'string' && validTypes.includes(v as SubmissionType)
+		);
+
+		return parsed.length > 0 ? parsed : undefined;
+	}
+
+	/**
+	 * Parse grading type from frontmatter
+	 */
+	private parseGradingType(value: unknown): GradingType | undefined {
+		const validTypes: GradingType[] = [
+			'pass_fail',
+			'percent',
+			'letter_grade',
+			'gpa_scale',
+			'points',
+			'not_graded',
+		];
+
+		if (typeof value === 'string' && validTypes.includes(value as GradingType)) {
+			return value as GradingType;
+		}
+
+		return undefined;
+	}
+
+	/**
+	 * Parse a string array from frontmatter
+	 */
+	private parseStringArray(value: unknown): string[] | undefined {
+		if (!Array.isArray(value)) {
+			return undefined;
+		}
+
+		const parsed = value.filter((v): v is string => typeof v === 'string');
+		return parsed.length > 0 ? parsed : undefined;
 	}
 
 	/**
@@ -131,19 +198,10 @@ export class FrontmatterParser {
 	}
 
 	/**
-	 * Infer content type from filename if not specified in frontmatter
+	 * Get default content type when not specified in frontmatter
+	 * Note: Filename inference has been removed - use explicit canvas_type in frontmatter
 	 */
-	inferContentType(filename: string): CanvasContentType {
-		const lowerFilename = filename.toLowerCase();
-
-		if (lowerFilename.includes('assignment')) {
-			return 'discussion';
-		}
-
-		if (lowerFilename.includes('discussion')) {
-			return 'discussion';
-		}
-
+	getDefaultContentType(): CanvasContentType {
 		return 'page';
 	}
 
@@ -170,10 +228,10 @@ export class FrontmatterParser {
 	}
 
 	/**
-	 * Get the effective content type (from frontmatter or inferred)
+	 * Get the effective content type (from frontmatter or default to page)
 	 */
 	getEffectiveContentType(parsed: ParsedFile): CanvasContentType {
-		return parsed.canvas.type || this.inferContentType(parsed.filename);
+		return parsed.canvas.type || this.getDefaultContentType();
 	}
 
 	/**

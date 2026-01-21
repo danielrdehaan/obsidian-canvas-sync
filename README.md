@@ -75,7 +75,8 @@ Course-Folder/
 ├── 01-Week-01/               → Module: "Week 01"
 │   ├── 01-Lecture.md         → Page: "Lecture"
 │   ├── 02-Studio-Session.md  → Page: "Studio Session"
-│   └── 03-Assignment.md      → Discussion (inferred from filename)
+│   ├── 03-Discussion.md      → Discussion (with canvas_type: discussion)
+│   └── 04-Assignment.md      → Assignment (with canvas_type: assignment)
 ├── 02-Week-02/               → Module: "Week 02"
 │   └── ...
 ```
@@ -100,52 +101,137 @@ Most files need no special frontmatter. The plugin uses smart defaults based on 
 
 ### When to Add Frontmatter
 
-Only add `canvas_*` fields when you need to override defaults:
+Add `canvas_*` fields when you need non-default behavior:
 
 ```yaml
 ---
 title: My Custom Page Title
-canvas_type: discussion    # Override type (default: page)
+canvas_type: discussion    # Required for non-page content (default: page)
 canvas_sync: false         # Exclude from sync
 ---
 ```
 
+**Important:** Content type is determined **only** by `canvas_type` frontmatter. There is no filename inference — a file named `Assignment.md` becomes a **page** unless you add `canvas_type: assignment`.
+
 ### Available Fields
+
+#### Common Fields (all types)
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `canvas_type` | string | Inferred | `page`, `discussion`, or `graded_discussion` |
+| `canvas_type` | string | `page` | Content type (see below) |
 | `canvas_title` | string | Uses `title` | Override the title sent to Canvas |
 | `canvas_position` | number | From filename | Override order within module |
 | `canvas_sync` | boolean | `true` | Set `false` to skip this file |
 | `canvas_publish` | boolean | `true` | Publish state in Canvas |
-| `canvas_points` | number | — | Points for graded content |
-| `canvas_due_date` | string | — | Due date (YYYY-MM-DD) |
 
-### Content Type Inference
+#### Content Types
 
-The plugin infers content type from filenames:
+| `canvas_type` | Canvas Result |
+|---------------|---------------|
+| `page` | Wiki page (default) |
+| `discussion` | Discussion topic |
+| `graded_discussion` | Discussion topic (graded) |
+| `assignment` | Assignment with submissions |
+| `external_url` | Module item linking to URL |
 
-| Filename Contains | Canvas Type |
-|-------------------|-------------|
-| `assignment` | Discussion |
-| `discussion` | Discussion |
-| *(anything else)* | Page |
+#### Assignment-Specific Fields
 
-### Example: Assignment File
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `canvas_points` | number | `0` | Points possible |
+| `canvas_due_date` | string | — | Due date (YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD) |
+| `canvas_lock_at` | string | — | Lock date (submissions closed) |
+| `canvas_unlock_at` | string | — | Unlock date (available from) |
+| `canvas_submission_types` | array | `['online_upload', 'online_text_entry']` | Allowed submission types |
+| `canvas_allowed_extensions` | array | — | File extensions for uploads (e.g., `['zip', 'wav', 'mp3']`) |
+| `canvas_grading_type` | string | `points` | Grading scheme |
+
+**Submission Types:**
+- `online_upload` — File upload
+- `online_text_entry` — Rich text box
+- `online_url` — URL submission
+- `media_recording` — Audio/video recording
+- `none` — No submission (attendance, in-class work)
+
+**Grading Types:**
+- `points` — Numeric points (default)
+- `pass_fail` — Pass/Fail
+- `percent` — Percentage
+- `letter_grade` — A-F letter grades
+- `not_graded` — Ungraded
+
+#### External URL Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `canvas_url` | string | **Required** | The external URL to link to |
+| `canvas_new_tab` | boolean | `true` | Open link in new tab |
+
+### Example: Assignment with File Upload
 
 ```yaml
 ---
-title: Week 03 Assignment
-canvas_type: discussion
-canvas_points: 10
-canvas_due_date: 2026-02-15
+title: Week 03 Sound Design Project
+canvas_type: assignment
+canvas_points: 100
+canvas_due_date: 2026-02-15T23:59:00
+canvas_submission_types:
+  - online_upload
+canvas_allowed_extensions:
+  - zip
+  - wav
+  - mp3
 ---
 
 ## Assignment Instructions
 
-Submit your work by the due date...
+Create a 30-second sound design piece...
 ```
+
+### Example: Simple Assignment
+
+For common cases, minimal frontmatter works:
+
+```yaml
+---
+title: Assignment 1
+canvas_type: assignment
+canvas_points: 10
+canvas_due_date: 2026-02-15
+---
+```
+
+Defaults to `['online_upload', 'online_text_entry']` submission types.
+
+### Example: Discussion Topic
+
+```yaml
+---
+title: Week 03 Discussion
+canvas_type: discussion
+---
+
+## Discussion Prompt
+
+Share your thoughts on...
+```
+
+### Example: External URL
+
+Link to external resources without creating a page:
+
+```yaml
+---
+title: Spotify Playlist - Week 03
+canvas_type: external_url
+canvas_url: "https://open.spotify.com/playlist/xyz"
+---
+
+Listening materials for this week's lecture.
+```
+
+Note: The markdown body is for your Obsidian reference only — Canvas just shows the link.
 
 ### Example: Exclude a File
 
