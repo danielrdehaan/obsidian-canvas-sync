@@ -148,11 +148,15 @@ export class CanvasApi {
 		courseId: number,
 		urlSlug: string,
 		body: string,
-		published?: boolean
+		published?: boolean,
+		title?: string
 	): Promise<CanvasPage> {
 		const data: Record<string, unknown> = { body };
 		if (published !== undefined) {
 			data.published = published;
+		}
+		if (title !== undefined) {
+			data.title = title;
 		}
 		return this.request<CanvasPage>('PUT', `/courses/${courseId}/pages/${urlSlug}`, {
 			wiki_page: data,
@@ -166,13 +170,16 @@ export class CanvasApi {
 		courseId: number,
 		title: string,
 		body: string,
-		published = true
+		published = true,
+		existingSlug?: string
 	): Promise<{ page: CanvasPage; created: boolean }> {
-		const slug = this.titleToSlug(title);
-		const existing = await this.getPage(courseId, slug);
+		// Use existing slug if provided (for title renames), otherwise derive from title
+		const lookupSlug = existingSlug || this.titleToSlug(title);
+		const existing = await this.getPage(courseId, lookupSlug);
 
 		if (existing) {
-			const page = await this.updatePage(courseId, slug, body, published);
+			// Update existing page, including the new title if it changed
+			const page = await this.updatePage(courseId, lookupSlug, body, published, title);
 			return { page, created: false };
 		} else {
 			const page = await this.createPage(courseId, title, body, published);

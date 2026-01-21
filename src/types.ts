@@ -65,6 +65,8 @@ export interface CanvasFrontmatter {
 	// External URL fields
 	url?: string;
 	new_tab?: boolean;
+	// Page identity field (stores the Canvas page URL slug after first sync)
+	page_url?: string;
 }
 
 /**

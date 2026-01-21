@@ -83,6 +83,21 @@ export class SyncEngine {
 	}
 
 	/**
+	 * Update the canvas_page_url frontmatter field after sync
+	 * This stores the page URL so that title renames work correctly
+	 */
+	private async updatePageUrlFrontmatter(file: TFile, pageUrl: string): Promise<void> {
+		try {
+			await this.app.fileManager.processFrontMatter(file, (frontmatter: Record<string, unknown>) => {
+				frontmatter.canvas_page_url = pageUrl;
+			});
+			this.log(`Updated canvas_page_url for ${file.path}: ${pageUrl}`);
+		} catch (error) {
+			this.log(`Warning: Failed to update canvas_page_url for ${file.path}:`, error);
+		}
+	}
+
+	/**
 	 * Folders to exclude from module discovery
 	 */
 	private excludedFolders = new Set([
@@ -316,7 +331,15 @@ export class SyncEngine {
 
 		try {
 			if (type === 'page') {
-				const { page, created } = await this.api.upsertPage(courseId, title, html, publish);
+				// Use existing page URL for lookups if available (handles title renames)
+				const existingSlug = parsed.canvas.page_url;
+				const { page, created } = await this.api.upsertPage(courseId, title, html, publish, existingSlug);
+
+				// Write page URL back to frontmatter if this is first sync or URL changed
+				if (created || !existingSlug || existingSlug !== page.url) {
+					await this.updatePageUrlFrontmatter(file, page.url);
+				}
+
 				return {
 					success: true,
 					filePath: file.path,
@@ -436,7 +459,14 @@ export class SyncEngine {
 				await this.api.updateSyllabus(courseId, html);
 
 				// Also create/update a page with the same content
-				const { page, created } = await this.api.upsertPage(courseId, title, html, publish);
+				// Use existing page URL for lookups if available (handles title renames)
+				const existingSlug = parsed.canvas.page_url;
+				const { page, created } = await this.api.upsertPage(courseId, title, html, publish, existingSlug);
+
+				// Write page URL back to frontmatter if this is first sync or URL changed
+				if (created || !existingSlug || existingSlug !== page.url) {
+					await this.updatePageUrlFrontmatter(file, page.url);
+				}
 
 				return {
 					success: true,

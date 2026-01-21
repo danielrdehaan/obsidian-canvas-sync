@@ -62,6 +62,8 @@ export class FrontmatterParser {
 			// External URL fields
 			url: typeof frontmatter.canvas_url === 'string' ? frontmatter.canvas_url : undefined,
 			new_tab: typeof frontmatter.canvas_new_tab === 'boolean' ? frontmatter.canvas_new_tab : true,
+			// Page identity field (stores the Canvas page URL slug after first sync)
+			page_url: typeof frontmatter.canvas_page_url === 'string' ? frontmatter.canvas_page_url : undefined,
 		};
 	}
 
