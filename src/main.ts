@@ -10,6 +10,8 @@ import {
 	debounce,
 	setIcon,
 } from 'obsidian';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
 	CanvasSyncSettings,
 	DEFAULT_SETTINGS,
@@ -35,7 +37,7 @@ export default class CanvasSyncPlugin extends Plugin {
 		super(app, manifest);
 		this.settings = DEFAULT_SETTINGS;
 		this.canvasApi = new CanvasApi('', '', false);
-		this.syncEngine = new SyncEngine(app, this.canvasApi, '', false);
+		this.syncEngine = new SyncEngine(app, this.canvasApi, [], false);
 	}
 
 	async onload(): Promise<void> {
@@ -49,8 +51,14 @@ export default class CanvasSyncPlugin extends Plugin {
 		this.canvasApi.setDebugMode(this.settings.debugMode);
 
 		// Initialize sync engine
-		this.syncEngine.setSharedContentPath(this.settings.sharedContentPath);
+		this.syncEngine.setSharedContentPaths(this.settings.sharedContentPaths);
 		this.syncEngine.setDebugMode(this.settings.debugMode);
+		this.syncEngine.setStyleSettings(this.settings.style);
+
+		// Load and set CSS snippets
+		await this.ensureSnippetsFolder();
+		const customCss = await this.loadEnabledSnippets();
+		this.syncEngine.setCustomCss(customCss);
 
 		// Add settings tab
 		this.addSettingTab(new CanvasSyncSettingTab(this.app, this));
@@ -93,7 +101,28 @@ export default class CanvasSyncPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const savedData = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, savedData);
+
+		// Deep merge style settings to preserve defaults for missing properties
+		this.settings.style = Object.assign(
+			{},
+			DEFAULT_SETTINGS.style,
+			savedData?.style
+		);
+
+		// Migration: Convert old sharedContentPath to sharedContentPaths
+		const data = this.settings as CanvasSyncSettings & { sharedContentPath?: string };
+		if (data.sharedContentPath && (!this.settings.sharedContentPaths || this.settings.sharedContentPaths.length === 0)) {
+			this.settings.sharedContentPaths = [data.sharedContentPath];
+			delete data.sharedContentPath;
+			await this.saveData(this.settings);
+		}
+
+		// Ensure sharedContentPaths is always an array
+		if (!Array.isArray(this.settings.sharedContentPaths)) {
+			this.settings.sharedContentPaths = [];
+		}
 	}
 
 	async saveSettings(): Promise<void> {
@@ -105,8 +134,13 @@ export default class CanvasSyncPlugin extends Plugin {
 			this.settings.canvasApiToken
 		);
 		this.canvasApi.setDebugMode(this.settings.debugMode);
-		this.syncEngine.setSharedContentPath(this.settings.sharedContentPath);
+		this.syncEngine.setSharedContentPaths(this.settings.sharedContentPaths);
 		this.syncEngine.setDebugMode(this.settings.debugMode);
+		this.syncEngine.setStyleSettings(this.settings.style);
+
+		// Reload CSS snippets
+		const customCss = await this.loadEnabledSnippets();
+		this.syncEngine.setCustomCss(customCss);
 	}
 
 	/**
@@ -452,6 +486,51 @@ export default class CanvasSyncPlugin extends Plugin {
 	}
 
 	/**
+	 * Sync all courses after a snippet change
+	 * Shows progress and completion notices
+	 */
+	async syncAllCoursesForSnippetChange(): Promise<void> {
+		const enabledCourses = this.settings.courses.filter((c) => c.enabled);
+
+		if (enabledCourses.length === 0) {
+			new Notice('No courses configured to sync');
+			return;
+		}
+
+		// Count total files for progress
+		let totalFiles = 0;
+		for (const course of enabledCourses) {
+			const files = this.app.vault
+				.getMarkdownFiles()
+				.filter((f) => f.path.startsWith(course.path));
+			totalFiles += files.length;
+		}
+
+		new Notice(`Syncing ${totalFiles} files across ${enabledCourses.length} course(s)...`);
+
+		this.startSync();
+
+		let success = 0;
+		let failed = 0;
+
+		for (const course of enabledCourses) {
+			try {
+				const results = await this.syncEngine.syncCourse(course);
+				for (const result of results) {
+					success += result.success;
+					failed += result.failed;
+				}
+			} catch (error) {
+				console.error(`Error syncing ${course.name}:`, error);
+				failed++;
+			}
+		}
+
+		this.endSync();
+		new Notice(`Snippet sync complete: ${success} updated, ${failed} failed`);
+	}
+
+	/**
 	 * Show course picker modal
 	 */
 	private showCoursePicker(): void {
@@ -559,7 +638,9 @@ export default class CanvasSyncPlugin extends Plugin {
 				const isInCourse = this.settings.courses.some((c) =>
 					file.path.startsWith(c.path)
 				);
-				const isShared = file.path.startsWith(this.settings.sharedContentPath);
+				const isShared = this.settings.sharedContentPaths.some(
+					(path) => path && file.path.startsWith(path)
+				);
 
 				if (isInCourse || (isShared && this.settings.syncSharedContent)) {
 					await this.syncFile(file);
@@ -699,5 +780,113 @@ export default class CanvasSyncPlugin extends Plugin {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Get the path to the CSS snippets folder (relative to vault)
+	 */
+	getSnippetsVaultPath(): string {
+		return `${this.app.vault.configDir}/plugins/canvas-sync/snippets`;
+	}
+
+	/**
+	 * Get the absolute path to the CSS snippets folder
+	 */
+	getSnippetsPath(): string {
+		// Use the adapter to get the full path
+		const adapter = this.app.vault.adapter as any;
+		if (adapter.basePath) {
+			return `${adapter.basePath}/${this.getSnippetsVaultPath()}`;
+		}
+		// Fallback for different adapter types
+		return this.getSnippetsVaultPath();
+	}
+
+	/**
+	 * Ensure the snippets folder exists
+	 */
+	async ensureSnippetsFolder(): Promise<void> {
+		const snippetsPath = this.getSnippetsPath();
+
+		try {
+			if (!fs.existsSync(snippetsPath)) {
+				fs.mkdirSync(snippetsPath, { recursive: true });
+				if (this.settings.debugMode) {
+					console.log('Canvas Sync: Created snippets folder at', snippetsPath);
+				}
+			}
+		} catch (error) {
+			if (this.settings.debugMode) {
+				console.log('Canvas Sync: Snippets folder creation:', error);
+			}
+		}
+	}
+
+	/**
+	 * Discover CSS files in the snippets folder
+	 */
+	async discoverSnippets(): Promise<string[]> {
+		const snippetsPath = this.getSnippetsPath();
+
+		// Ensure folder exists
+		await this.ensureSnippetsFolder();
+
+		try {
+			if (!fs.existsSync(snippetsPath)) {
+				return [];
+			}
+
+			const files = fs.readdirSync(snippetsPath);
+			const cssFiles = files
+				.filter((f) => f.endsWith('.css'))
+				.sort();
+
+			if (this.settings.debugMode) {
+				console.log('Canvas Sync: Discovered snippets:', cssFiles);
+			}
+
+			return cssFiles;
+		} catch (error) {
+			console.error('Canvas Sync: Error reading snippets folder:', error);
+			return [];
+		}
+	}
+
+	/**
+	 * Load all enabled CSS snippets and concatenate them
+	 */
+	async loadEnabledSnippets(): Promise<string> {
+		const snippetsPath = this.getSnippetsPath();
+		const enabledSnippets = this.settings.style.enabledSnippets;
+
+		console.log('Canvas Sync: Loading snippets from:', snippetsPath);
+		console.log('Canvas Sync: Enabled snippets:', enabledSnippets);
+
+		if (enabledSnippets.length === 0) {
+			return '';
+		}
+
+		const cssContents: string[] = [];
+
+		for (const snippet of enabledSnippets) {
+			const filePath = path.join(snippetsPath, snippet);
+			console.log('Canvas Sync: Attempting to load:', filePath);
+
+			try {
+				if (fs.existsSync(filePath)) {
+					const content = fs.readFileSync(filePath, 'utf-8');
+					console.log(`Canvas Sync: Loaded ${snippet} (${content.length} chars)`);
+					cssContents.push(`/* === ${snippet} === */\n${content}`);
+				} else {
+					console.warn(`Canvas Sync: Snippet file not found: ${filePath}`);
+				}
+			} catch (error) {
+				console.error(`Canvas Sync: Error loading snippet ${snippet}:`, error);
+			}
+		}
+
+		const result = cssContents.join('\n\n');
+		console.log('Canvas Sync: Total custom CSS length:', result.length);
+		return result;
 	}
 }

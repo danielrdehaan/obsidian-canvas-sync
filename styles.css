@@ -33,6 +33,39 @@
 	padding: 20px;
 }
 
+/* Shared Paths */
+.canvas-sync-shared-paths {
+	margin: 16px 0;
+}
+
+.canvas-sync-path-item {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 8px 12px;
+	margin-bottom: 8px;
+	background: var(--background-secondary);
+}
+
+.canvas-sync-path-item .setting-item {
+	border: none;
+	padding: 0;
+}
+
+.canvas-sync-path-item .setting-item-info {
+	flex: 1;
+}
+
+.canvas-sync-path-item .setting-item-control {
+	gap: 4px;
+}
+
+.canvas-sync-no-paths {
+	color: var(--text-muted);
+	font-style: italic;
+	text-align: center;
+	padding: 20px;
+}
+
 /* Status Bar */
 .status-bar-item.canvas-sync-status {
 	padding: 0 8px;
@@ -105,4 +138,53 @@
 	to {
 		transform: rotate(360deg);
 	}
+}
+
+/* Folder Picker Modal */
+.folder-picker-modal {
+	min-width: 400px;
+}
+
+.folder-picker-path {
+	padding: 8px;
+	background: var(--background-secondary);
+	border-radius: 4px;
+	margin-bottom: 12px;
+}
+
+.folder-picker-tree {
+	max-height: 300px;
+	overflow-y: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	padding: 8px;
+	margin-bottom: 12px;
+}
+
+.folder-picker-item {
+	padding: 4px 8px;
+	cursor: pointer;
+	border-radius: 4px;
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.folder-picker-item:hover {
+	background: var(--background-modifier-hover);
+}
+
+.folder-picker-item.is-selected {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.folder-picker-icon {
+	width: 16px;
+	font-size: 10px;
+	cursor: pointer;
+}
+
+.folder-picker-name {
+	flex: 1;
 }

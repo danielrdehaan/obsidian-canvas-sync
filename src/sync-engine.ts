@@ -11,6 +11,7 @@ import type {
 	CourseSyncResult,
 	CanvasContentType,
 	ParsedFile,
+	StyleSettings,
 } from './types';
 
 /**
@@ -23,18 +24,20 @@ export class SyncEngine {
 	private frontmatter: FrontmatterParser;
 	private linkParser: LinkParser;
 	private debugMode: boolean;
+	private styleSettings?: StyleSettings;
+	private customCss: string = '';
 
 	constructor(
 		app: App,
 		api: CanvasApi,
-		sharedContentPath: string,
+		sharedContentPaths: string[] = [],
 		debugMode = false
 	) {
 		this.app = app;
 		this.api = api;
 		this.converter = new MarkdownConverter();
 		this.frontmatter = new FrontmatterParser(app);
-		this.linkParser = new LinkParser(app, sharedContentPath);
+		this.linkParser = new LinkParser(app, sharedContentPaths);
 		this.debugMode = debugMode;
 	}
 
@@ -47,10 +50,27 @@ export class SyncEngine {
 	}
 
 	/**
-	 * Set shared content path
+	 * Set shared content paths
 	 */
-	setSharedContentPath(path: string): void {
-		this.linkParser.setSharedContentPath(path);
+	setSharedContentPaths(paths: string[]): void {
+		this.linkParser.setSharedContentPaths(paths);
+	}
+
+	/**
+	 * Set style settings for content conversion
+	 */
+	setStyleSettings(style: StyleSettings): void {
+		this.styleSettings = style;
+	}
+
+	/**
+	 * Set custom CSS content (concatenated snippets)
+	 */
+	setCustomCss(css: string): void {
+		this.customCss = css;
+		if (this.debugMode) {
+			console.log('[Sync Engine] setCustomCss called, length:', css.length);
+		}
 	}
 
 	/**
@@ -284,7 +304,12 @@ export class SyncEngine {
 			courseId,
 			pageSlugMap,
 			discussionTitleMap,
+			style: this.styleSettings,
+			customCss: this.customCss || undefined,
 		};
+
+		this.log('Converting file:', file.path);
+		this.log('Custom CSS length:', this.customCss?.length || 0);
 
 		// Convert markdown to HTML
 		const html = this.converter.convert(parsed.content, convertOptions);
@@ -443,9 +468,14 @@ export class SyncEngine {
 			.getMarkdownFiles()
 			.filter((f) => f.path.startsWith(course.path));
 
-		// Build maps for link resolution
-		const pageSlugMap = await this.frontmatter.buildPageSlugMap(courseFiles);
-		const discussionTitleMap = await this.frontmatter.buildDiscussionTitleMap(courseFiles);
+		// Get all shared content files (for inclusion in slug maps)
+		const allSharedContentFiles = this.linkParser.getAllSharedContentFiles();
+
+		// Build maps for link resolution - include both course and shared content files
+		// This ensures wiki-links to shared content resolve even before shared content is synced
+		const allFilesForMaps = [...courseFiles, ...allSharedContentFiles];
+		const pageSlugMap = await this.frontmatter.buildPageSlugMap(allFilesForMaps);
+		const discussionTitleMap = await this.frontmatter.buildDiscussionTitleMap(allFilesForMaps);
 
 		// Get shared content files (will be synced first to get actual Canvas URLs)
 		const sharedContentFiles = await this.linkParser.getSharedContentToSync(course.path);
@@ -520,10 +550,15 @@ export class SyncEngine {
 					console.log(`[Sync Engine] Getting existing items for module ${canvasModule.id}`);
 					const existingItems = await this.api.getModuleItems(courseId, canvasModule.id);
 					console.log(`[Sync Engine] Found ${existingItems.length} existing items in module`);
+					// Debug: log all items with their types and IDs
+					for (const item of existingItems) {
+						console.log(`[Sync Engine]   Item: type="${item.type}", content_id=${item.content_id} (${typeof item.content_id}), title="${item.title}"`);
+					}
 					const existingPageUrls = new Set(existingItems.filter(i => i.type === 'Page').map(i => i.page_url));
 					const existingDiscussionIds = new Set(existingItems.filter(i => i.type === 'Discussion').map(i => i.content_id));
 					const existingAssignmentIds = new Set(existingItems.filter(i => i.type === 'Assignment').map(i => i.content_id));
 					const existingExternalUrls = new Set(existingItems.filter(i => i.type === 'ExternalUrl').map(i => i.title));
+					console.log(`[Sync Engine] existingAssignmentIds:`, Array.from(existingAssignmentIds));
 
 					// Sync each item in the module
 					let itemPosition = 1;
@@ -584,10 +619,11 @@ export class SyncEngine {
 										);
 										console.log(`[Sync Engine] Added discussion to module: ${result.title}`);
 									}
-								} else if (result.canvasType === 'graded_discussion' && result.assignmentId) {
-									// Graded discussion - add as Assignment (since it's an assignment with discussion_topic type)
-									const alreadyExists = existingAssignmentIds.has(result.assignmentId);
-									console.log(`[Sync Engine] Graded discussion (assignment) ${result.assignmentId} already in module: ${alreadyExists}`);
+								} else if (result.canvasType === 'graded_discussion' && result.discussionId && result.assignmentId) {
+									// Graded discussion - Canvas returns these as type="Discussion" in module items,
+									// so we check against existingDiscussionIds using the discussionId
+									const alreadyExists = existingDiscussionIds.has(result.discussionId);
+									console.log(`[Sync Engine] Graded discussion ${result.discussionId} already in module: ${alreadyExists}`);
 									if (!alreadyExists) {
 										await this.api.addAssignmentToModule(
 											courseId,
@@ -599,7 +635,7 @@ export class SyncEngine {
 									}
 								} else if (result.canvasType === 'assignment' && result.assignmentId) {
 									const alreadyExists = existingAssignmentIds.has(result.assignmentId);
-									console.log(`[Sync Engine] Assignment ${result.assignmentId} already in module: ${alreadyExists}`);
+									console.log(`[Sync Engine] Assignment ${result.assignmentId} (${typeof result.assignmentId}) already in module: ${alreadyExists}, set contains: [${Array.from(existingAssignmentIds).join(', ')}]`);
 									if (!alreadyExists) {
 										await this.api.addAssignmentToModule(
 											courseId,
@@ -676,9 +712,12 @@ export class SyncEngine {
 							.getMarkdownFiles()
 							.filter((f) => f.path.startsWith(course.path));
 
-						const pageSlugMap = await this.frontmatter.buildPageSlugMap(courseFiles);
+						// Include shared content files for link resolution
+						const allSharedContentFiles = this.linkParser.getAllSharedContentFiles();
+						const allFilesForMaps = [...courseFiles, ...allSharedContentFiles];
+						const pageSlugMap = await this.frontmatter.buildPageSlugMap(allFilesForMaps);
 						const discussionTitleMap =
-							await this.frontmatter.buildDiscussionTitleMap(courseFiles);
+							await this.frontmatter.buildDiscussionTitleMap(allFilesForMaps);
 
 						for (const courseId of course.courseIds) {
 							const result = await this.syncFile(
@@ -700,8 +739,11 @@ export class SyncEngine {
 			.getMarkdownFiles()
 			.filter((f) => f.path.startsWith(matchingCourse.path));
 
-		const pageSlugMap = await this.frontmatter.buildPageSlugMap(courseFiles);
-		const discussionTitleMap = await this.frontmatter.buildDiscussionTitleMap(courseFiles);
+		// Include shared content files for link resolution
+		const allSharedContentFiles = this.linkParser.getAllSharedContentFiles();
+		const allFilesForMaps = [...courseFiles, ...allSharedContentFiles];
+		const pageSlugMap = await this.frontmatter.buildPageSlugMap(allFilesForMaps);
+		const discussionTitleMap = await this.frontmatter.buildDiscussionTitleMap(allFilesForMaps);
 
 		// Sync to each course ID
 		for (const courseId of matchingCourse.courseIds) {

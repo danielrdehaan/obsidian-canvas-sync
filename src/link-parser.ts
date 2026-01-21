@@ -6,28 +6,30 @@ import type { SharedContentDiscovery } from './types';
  */
 export class LinkParser {
 	private app: App;
-	private sharedContentPath: string;
+	private sharedContentPaths: string[];
 
-	constructor(app: App, sharedContentPath: string) {
+	constructor(app: App, sharedContentPaths: string[] = []) {
 		this.app = app;
-		this.sharedContentPath = sharedContentPath;
+		this.sharedContentPaths = sharedContentPaths;
 	}
 
 	/**
-	 * Update the shared content path
+	 * Update the shared content paths
 	 */
-	setSharedContentPath(path: string): void {
-		this.sharedContentPath = path;
+	setSharedContentPaths(paths: string[]): void {
+		this.sharedContentPaths = paths;
 	}
 
 	/**
-	 * Check if a file is in the shared content folder
+	 * Check if a file is in one of the shared content folders
 	 */
 	isSharedContent(filePath: string): boolean {
-		if (!this.sharedContentPath) {
+		if (!this.sharedContentPaths || this.sharedContentPaths.length === 0) {
 			return false;
 		}
-		return filePath.startsWith(this.sharedContentPath);
+		return this.sharedContentPaths.some(
+			(path) => path && filePath.startsWith(path)
+		);
 	}
 
 	/**
@@ -132,7 +134,7 @@ export class LinkParser {
 	 * Get all shared content files
 	 */
 	getAllSharedContentFiles(): TFile[] {
-		if (!this.sharedContentPath) {
+		if (!this.sharedContentPaths || this.sharedContentPaths.length === 0) {
 			return [];
 		}
 
@@ -184,7 +186,7 @@ export class LinkParser {
 	 */
 	async getSharedContentToSync(coursePath: string): Promise<TFile[]> {
 		console.log(`[Link Parser] Getting shared content for course: ${coursePath}`);
-		console.log(`[Link Parser] Shared content path configured as: ${this.sharedContentPath}`);
+		console.log(`[Link Parser] Shared content paths configured as: ${this.sharedContentPaths.join(', ')}`);
 
 		const discoveries = await this.discoverSharedContent(coursePath);
 		console.log(`[Link Parser] Discovered ${discoveries.length} shared content files`);

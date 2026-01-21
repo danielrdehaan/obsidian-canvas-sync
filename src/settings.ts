@@ -1,6 +1,6 @@
-import { App, PluginSettingTab, Setting, TextComponent, Notice } from 'obsidian';
+import { App, PluginSettingTab, Setting, TextComponent, Notice, TFolder, Modal } from 'obsidian';
 import type CanvasSyncPlugin from './main';
-import type { CourseConfig } from './types';
+import type { CourseConfig, StyleSettings } from './types';
 
 /**
  * Plugin settings interface
@@ -9,12 +9,14 @@ export interface CanvasSyncSettings {
 	canvasApiUrl: string;
 	canvasApiToken: string;
 	courses: CourseConfig[];
-	sharedContentPath: string;
+	sharedContentPaths: string[];
 	autoSync: boolean;
 	syncOnSave: boolean;
 	syncSharedContent: boolean;
 	showStatusBar: boolean;
 	debugMode: boolean;
+	/** Content styling settings */
+	style: StyleSettings;
 }
 
 /**
@@ -24,12 +26,17 @@ export const DEFAULT_SETTINGS: CanvasSyncSettings = {
 	canvasApiUrl: 'https://canvas.colum.edu',
 	canvasApiToken: '',
 	courses: [],
-	sharedContentPath: 'Website/Digital Garden/Shared Knowledge',
+	sharedContentPaths: [],
 	autoSync: false,
 	syncOnSave: true,
 	syncSharedContent: true,
 	showStatusBar: true,
 	debugMode: false,
+	style: {
+		theme: 'auto',
+		accentColor: '#667eea',
+		enabledSnippets: [],
+	},
 };
 
 /**
@@ -118,17 +125,18 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 		// Shared Content Settings
 		containerEl.createEl('h2', { text: 'Shared Content' });
 
+		const sharedPathsContainer = containerEl.createDiv('canvas-sync-shared-paths');
+		this.renderSharedPaths(sharedPathsContainer);
+
 		new Setting(containerEl)
-			.setName('Shared Content Path')
-			.setDesc('Path to shared content folder (relative to vault root). Files linked from courses will be auto-synced.')
-			.addText((text) =>
-				text
-					.setPlaceholder('Shared Knowledge')
-					.setValue(this.plugin.settings.sharedContentPath)
-					.onChange(async (value) => {
-						this.plugin.settings.sharedContentPath = value.trim();
-						await this.plugin.saveSettings();
-					})
+			.setName('Add Shared Path')
+			.setDesc('Add another shared content folder')
+			.addButton((button) =>
+				button.setButtonText('Add Path').onClick(async () => {
+					this.plugin.settings.sharedContentPaths.push('');
+					await this.plugin.saveSettings();
+					this.renderSharedPaths(sharedPathsContainer);
+				})
 			);
 
 		new Setting(containerEl)
@@ -180,6 +188,86 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 					this.plugin.settings.debugMode = value;
 					await this.plugin.saveSettings();
 				})
+			);
+
+		// Content Styling
+		containerEl.createEl('h2', { text: 'Content Styling' });
+
+		new Setting(containerEl)
+			.setName('Theme')
+			.setDesc('Color scheme for synced content. Auto follows OS/browser dark mode preference.')
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption('auto', 'Auto (follows system)')
+					.addOption('light', 'Light')
+					.addOption('dark', 'Dark')
+					.setValue(this.plugin.settings.style.theme)
+					.onChange(async (value) => {
+						this.plugin.settings.style.theme = value as 'auto' | 'light' | 'dark';
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Accent Color')
+			.setDesc('Primary color for links, headings, and table headers (hex format)')
+			.addText((text) => {
+				text
+					.setPlaceholder('#667eea')
+					.setValue(this.plugin.settings.style.accentColor)
+					.onChange(async (value) => {
+						// Validate hex color
+						const hexRegex = /^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+						if (hexRegex.test(value) || value === '') {
+							this.plugin.settings.style.accentColor = value || '#667eea';
+							await this.plugin.saveSettings();
+						}
+					});
+				// Style the input to show the color
+				text.inputEl.style.width = '100px';
+				text.inputEl.setAttribute('type', 'text');
+			})
+			.addColorPicker((picker) =>
+				picker
+					.setValue(this.plugin.settings.style.accentColor)
+					.onChange(async (value) => {
+						this.plugin.settings.style.accentColor = value;
+						await this.plugin.saveSettings();
+						// Update the text input to match
+						this.display();
+					})
+			);
+
+		// CSS Snippets subsection
+		containerEl.createEl('h3', { text: 'CSS Snippets' });
+		containerEl.createEl('p', {
+			text: 'Add CSS files to the snippets folder to customize Canvas content styling. Toggle snippets on/off below.',
+			cls: 'setting-item-description',
+		});
+
+		const snippetsContainer = containerEl.createDiv('canvas-sync-snippets');
+		this.renderSnippets(snippetsContainer);
+
+		new Setting(containerEl)
+			.addButton((button) =>
+				button
+					.setButtonText('Open Snippets Folder')
+					.onClick(async () => {
+						const snippetsPath = this.plugin.getSnippetsPath();
+						// Ensure folder exists
+						await this.plugin.ensureSnippetsFolder();
+						// Open in system file manager
+						const { shell } = require('electron');
+						shell.openPath(snippetsPath);
+					})
+			)
+			.addButton((button) =>
+				button
+					.setButtonText('Refresh')
+					.onClick(async () => {
+						this.renderSnippets(snippetsContainer);
+						new Notice('Snippets list refreshed');
+					})
 			);
 
 		// Support Section
@@ -264,6 +352,70 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 	}
 
 	/**
+	 * Render the list of shared content paths
+	 */
+	private renderSharedPaths(container: HTMLElement): void {
+		container.empty();
+
+		if (this.plugin.settings.sharedContentPaths.length === 0) {
+			container.createEl('p', {
+				text: 'No shared content paths configured. Add a path to enable shared content syncing.',
+				cls: 'canvas-sync-no-paths',
+			});
+			return;
+		}
+
+		for (let i = 0; i < this.plugin.settings.sharedContentPaths.length; i++) {
+			const path = this.plugin.settings.sharedContentPaths[i];
+			const pathEl = container.createDiv('canvas-sync-path-item');
+
+			let pathInput: TextComponent;
+
+			new Setting(pathEl)
+				.setName(path || `Path ${i + 1}`)
+				.setDesc(path ? `Folder: ${path}` : 'Click Browse to select a folder')
+				.addText((text) => {
+					pathInput = text;
+					text
+						.setPlaceholder('Path to shared content folder')
+						.setValue(path)
+						.onChange(async (value) => {
+							this.plugin.settings.sharedContentPaths[i] = value.trim();
+							await this.plugin.saveSettings();
+						});
+				})
+				.addButton((button) =>
+					button
+						.setIcon('folder')
+						.setTooltip('Browse for folder')
+						.onClick(() => {
+							const modal = new FolderPickerModal(
+								this.app,
+								path,
+								async (selectedPath) => {
+									pathInput.setValue(selectedPath);
+									this.plugin.settings.sharedContentPaths[i] = selectedPath;
+									await this.plugin.saveSettings();
+									this.renderSharedPaths(container);
+								}
+							);
+							modal.open();
+						})
+				)
+				.addButton((button) =>
+					button
+						.setIcon('trash')
+						.setTooltip('Remove path')
+						.onClick(async () => {
+							this.plugin.settings.sharedContentPaths.splice(i, 1);
+							await this.plugin.saveSettings();
+							this.renderSharedPaths(container);
+						})
+				);
+		}
+	}
+
+	/**
 	 * Show modal to add a new course
 	 */
 	private showAddCourseModal(): void {
@@ -289,9 +441,52 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 		});
 		modal.open();
 	}
-}
 
-import { Modal } from 'obsidian';
+	/**
+	 * Render the list of CSS snippets
+	 */
+	private async renderSnippets(container: HTMLElement): Promise<void> {
+		container.empty();
+
+		const snippets = await this.plugin.discoverSnippets();
+
+		if (snippets.length === 0) {
+			container.createEl('p', {
+				text: 'No CSS snippets found. Click "Open Snippets Folder" to add CSS files.',
+				cls: 'canvas-sync-no-snippets',
+			});
+			return;
+		}
+
+		for (const snippet of snippets) {
+			const isEnabled = this.plugin.settings.style.enabledSnippets.includes(snippet);
+
+			new Setting(container)
+				.setName(snippet)
+				.addToggle((toggle) =>
+					toggle
+						.setValue(isEnabled)
+						.setTooltip(isEnabled ? 'Disable snippet' : 'Enable snippet')
+						.onChange(async (value) => {
+							if (value) {
+								// Add to enabled list
+								if (!this.plugin.settings.style.enabledSnippets.includes(snippet)) {
+									this.plugin.settings.style.enabledSnippets.push(snippet);
+								}
+							} else {
+								// Remove from enabled list
+								this.plugin.settings.style.enabledSnippets =
+									this.plugin.settings.style.enabledSnippets.filter((s) => s !== snippet);
+							}
+							await this.plugin.saveSettings();
+
+							// Trigger sync of all courses to apply styling changes
+							await this.plugin.syncAllCoursesForSnippetChange();
+						})
+				);
+		}
+	}
+}
 
 /**
  * Modal for adding/editing a course
@@ -389,6 +584,126 @@ class CourseModal extends Modal {
 
 		await this.onSave(course);
 		this.close();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+/**
+ * Modal for browsing and selecting a folder from the vault
+ */
+class FolderPickerModal extends Modal {
+	private currentPath: string;
+	private onSelect: (path: string) => void;
+	private selectedPath: string;
+
+	constructor(app: App, initialPath: string, onSelect: (path: string) => void) {
+		super(app);
+		this.currentPath = initialPath;
+		this.selectedPath = initialPath;
+		this.onSelect = onSelect;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.addClass('folder-picker-modal');
+
+		contentEl.createEl('h2', { text: 'Select Folder' });
+
+		// Selected path display
+		const pathDisplay = contentEl.createDiv('folder-picker-path');
+		pathDisplay.createEl('strong', { text: 'Selected: ' });
+		const pathSpan = pathDisplay.createEl('span', { text: this.selectedPath || '(vault root)' });
+
+		// Folder tree container
+		const treeContainer = contentEl.createDiv('folder-picker-tree');
+		this.renderFolderTree(treeContainer, pathSpan);
+
+		// Buttons
+		new Setting(contentEl)
+			.addButton((button) =>
+				button
+					.setButtonText('Select')
+					.setCta()
+					.onClick(() => {
+						this.onSelect(this.selectedPath);
+						this.close();
+					})
+			)
+			.addButton((button) =>
+				button.setButtonText('Cancel').onClick(() => this.close())
+			);
+	}
+
+	private renderFolderTree(container: HTMLElement, pathSpan: HTMLElement): void {
+		const root = this.app.vault.getRoot();
+		this.renderFolder(container, root, 0, pathSpan);
+	}
+
+	private renderFolder(container: HTMLElement, folder: TFolder, depth: number, pathSpan: HTMLElement): void {
+		const children = folder.children
+			.filter((child): child is TFolder => child instanceof TFolder)
+			.filter((f) => !f.name.startsWith('.'))
+			.sort((a, b) => a.name.localeCompare(b.name));
+
+		for (const child of children) {
+			const folderEl = container.createDiv('folder-picker-item');
+			folderEl.style.paddingLeft = `${depth * 20}px`;
+
+			const isSelected = child.path === this.selectedPath;
+			if (isSelected) {
+				folderEl.addClass('is-selected');
+			}
+
+			// Expand/collapse icon
+			const hasChildren = child.children.some(
+				(c) => c instanceof TFolder && !c.name.startsWith('.')
+			);
+			const iconSpan = folderEl.createSpan('folder-picker-icon');
+			iconSpan.setText(hasChildren ? '▶' : '  ');
+
+			// Folder name
+			const nameSpan = folderEl.createSpan('folder-picker-name');
+			nameSpan.setText(child.name);
+
+			// Click to select
+			folderEl.addEventListener('click', (e) => {
+				e.stopPropagation();
+				// Remove previous selection
+				container.querySelectorAll('.is-selected').forEach((el) =>
+					el.removeClass('is-selected')
+				);
+				folderEl.addClass('is-selected');
+				this.selectedPath = child.path;
+				pathSpan.setText(child.path);
+			});
+
+			// Double-click to select and close
+			folderEl.addEventListener('dblclick', () => {
+				this.onSelect(child.path);
+				this.close();
+			});
+
+			// Children container (initially hidden)
+			const childContainer = container.createDiv('folder-picker-children');
+			childContainer.style.display = 'none';
+
+			if (hasChildren) {
+				let expanded = false;
+				iconSpan.addEventListener('click', (e) => {
+					e.stopPropagation();
+					expanded = !expanded;
+					iconSpan.setText(expanded ? '▼' : '▶');
+					childContainer.style.display = expanded ? 'block' : 'none';
+					if (expanded && childContainer.childElementCount === 0) {
+						this.renderFolder(childContainer, child, depth + 1, pathSpan);
+					}
+				});
+			}
+		}
 	}
 
 	onClose(): void {

@@ -4,6 +4,23 @@
 export type CanvasContentType = 'page' | 'discussion' | 'graded_discussion' | 'assignment' | 'external_url';
 
 /**
+ * Content theme options for Canvas styling
+ */
+export type ContentTheme = 'auto' | 'light' | 'dark';
+
+/**
+ * Style settings for Canvas content
+ */
+export interface StyleSettings {
+	/** Theme mode: auto (follows OS preference), light, or dark */
+	theme: ContentTheme;
+	/** Primary accent color (hex) used for links, headings, table headers */
+	accentColor: string;
+	/** List of enabled CSS snippet filenames */
+	enabledSnippets: string[];
+}
+
+/**
  * Canvas assignment submission types
  */
 export type SubmissionType =

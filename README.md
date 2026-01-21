@@ -13,6 +13,9 @@ Sync your Obsidian markdown files to Canvas LMS. Supports multiple courses, auto
 - **YouTube Embeds** — Embed YouTube videos with standard markdown image syntax
 - **Obsidian Callouts** — Callouts converted to styled Canvas divs
 - **Context Menus** — Right-click files or folders to sync
+- **Light/Dark Mode Support** — Automatic theme switching based on OS preference
+- **Mobile Responsive** — Tables scroll horizontally, fonts scale on small screens
+- **Customizable Styling** — Accent colors and custom CSS for institutional branding
 
 ## Installation
 
@@ -346,9 +349,159 @@ Becomes a clickable link to the Syllabus page in Canvas.
 ### Tables
 
 Tables are styled with:
-- Gradient header row (purple)
+- Gradient header row (uses your accent color)
 - Clean borders
-- Alternating row colors (on some themes)
+- Alternating row colors
+- Horizontal scrolling on mobile devices
+
+## Content Styling
+
+The plugin generates styled HTML with full support for light mode, dark mode, and mobile devices. All styling is configurable through the plugin settings.
+
+### Theme Modes
+
+| Mode | Behavior |
+|------|----------|
+| **Auto** (default) | Follows the user's OS/browser dark mode preference using `prefers-color-scheme` |
+| **Light** | Always uses light theme colors |
+| **Dark** | Always uses dark theme colors |
+
+When set to Auto, content automatically adapts:
+- Students using Canvas in a dark browser/OS see dark-themed content
+- Students using light mode see light-themed content
+- No action required from students — it just works
+
+### Accent Color
+
+The accent color is used for:
+- **H1 heading underlines** — Colored border below main headings
+- **Table header gradients** — Gradient from accent to a darker shade
+- **Links** — Link text and underline color
+- **Blockquote borders** — Left border accent
+- **Callout borders** — Left border on callout boxes
+
+Default: `#667eea` (purple-blue)
+
+**Examples of accent colors:**
+- `#667eea` — Purple-blue (default)
+- `#2563eb` — Blue
+- `#059669` — Green
+- `#dc2626` — Red
+- `#7c3aed` — Purple
+- Match your institution's brand color!
+
+### CSS Snippets
+
+For advanced customization, use CSS snippets — modular CSS files that can be individually toggled on/off, similar to Obsidian's CSS snippets feature.
+
+**Location:** `.obsidian/plugins/canvas-sync/snippets/`
+
+**How to use:**
+1. Click **Open Snippets Folder** in settings to open the folder
+2. Create `.css` files in this folder
+3. Click **Refresh** to see new snippets
+4. Toggle snippets on/off with the checkboxes
+
+**Benefits of snippets:**
+- **Modular** — Separate concerns (branding, accessibility, mobile tweaks)
+- **Shareable** — Share individual snippets with colleagues
+- **Safe experimentation** — Test new styles without breaking working configs
+- **Toggle on/off** — Quickly enable/disable customizations
+
+**Example snippets:**
+
+`institution-branding.css`:
+```css
+/* Custom table header with school colors */
+.cs-thead {
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+}
+
+/* Add institution logo */
+.cs-container::before {
+  content: '';
+  display: block;
+  height: 60px;
+  background: url('https://yourschool.edu/logo.png') no-repeat;
+  background-size: contain;
+  margin-bottom: 20px;
+}
+```
+
+`larger-headings.css`:
+```css
+/* Increase heading sizes for presentation mode */
+.cs-h1 { font-size: 2.5em; }
+.cs-h2 { font-size: 1.8em; }
+.cs-h3 { font-size: 1.4em; }
+```
+
+`high-contrast.css`:
+```css
+/* High contrast mode for accessibility */
+.cs-container { color: #000; }
+.cs-link { color: #0000ee; text-decoration: underline; }
+.cs-callout-body { color: #000; }
+```
+
+`custom-callouts.css`:
+```css
+/* Custom callout colors */
+.cs-callout-important {
+  background: #fef2f2;
+  border-color: #dc2626;
+}
+.cs-callout-important .cs-callout-title {
+  color: #b91c1c;
+}
+```
+
+**Load order:** Snippets are loaded alphabetically by filename. Use numeric prefixes (e.g., `01-base.css`, `02-overrides.css`) to control order.
+
+### CSS Class Reference
+
+All elements use `cs-` prefixed classes for styling:
+
+| Class | Element |
+|-------|---------|
+| `.cs-container` | Main content wrapper |
+| `.cs-h1`, `.cs-h2`, `.cs-h3`, `.cs-h4` | Headings |
+| `.cs-table-wrap` | Scrollable table container |
+| `.cs-table` | Table element |
+| `.cs-thead` | Table header |
+| `.cs-th` | Table header cell |
+| `.cs-td` | Table data cell |
+| `.cs-tr` | Table row (body rows only) |
+| `.cs-pre` | Code block container |
+| `.cs-code` | Inline code |
+| `.cs-code-block` | Code inside pre block |
+| `.cs-blockquote` | Blockquote |
+| `.cs-ul`, `.cs-ol` | Lists |
+| `.cs-li` | List item |
+| `.cs-link` | Links |
+| `.cs-hr` | Horizontal rule |
+| `.cs-strong` | Bold text |
+| `.cs-callout` | Callout container |
+| `.cs-callout-{type}` | Callout by type (note, tip, warning, etc.) |
+| `.cs-callout-title` | Callout title |
+| `.cs-callout-body` | Callout content |
+| `.cs-video-container` | YouTube embed wrapper |
+| `.cs-video-iframe` | YouTube iframe |
+
+### Mobile Responsiveness
+
+Content automatically adapts to smaller screens:
+
+- **Tables** — Wrapped in a scrollable container, smaller padding and font
+- **Headings** — Use `clamp()` for fluid font sizing (scales between min/max)
+- **Callouts** — Reduced padding on mobile
+- **Blockquotes** — Reduced padding and margins
+- **Code blocks** — Smaller font, horizontal scrolling
+
+The breakpoint is 600px. On screens narrower than this:
+- Base font size reduces to 14px
+- Table font reduces to 13px
+- Spacing is tightened throughout
 
 ## Commands
 
@@ -426,6 +579,18 @@ When enabled, any file in the Shared Content folder that is wiki-linked from a c
 | **Show Status Bar** | Display sync status in the status bar |
 | **Debug Mode** | Enable detailed logging (check Developer Console) |
 
+### Content Styling
+
+| Setting | Description |
+|---------|-------------|
+| **Theme** | Color scheme: Auto (follows OS), Light, or Dark |
+| **Accent Color** | Primary color for links, headings, tables (hex format) |
+| **CSS Snippets** | Toggle individual CSS snippet files on/off |
+| **Open Snippets Folder** | Opens the snippets folder in your file manager |
+| **Refresh** | Rescans the snippets folder for new/removed files |
+
+See [Content Styling](#content-styling) for detailed documentation.
+
 ## Shared Content
 
 The plugin supports sharing content across multiple courses:
@@ -495,6 +660,46 @@ Course-A/01-Week-01/Lecture.md contains:
 1. Hard refresh the Canvas page (Cmd/Ctrl + Shift + R)
 2. Check "Last sync" time in status bar
 3. Try manual sync via Command Palette
+
+### Dark Mode Not Working
+
+**Symptom:** Content stays light even when browser/OS is in dark mode.
+
+**Causes:**
+1. Theme is set to "Light" instead of "Auto" — check Content Styling settings
+2. Browser doesn't support `prefers-color-scheme` — try a modern browser
+3. Canvas may override some styles — try custom CSS to force colors
+
+**Solutions:**
+1. Set Theme to "Auto" in plugin settings
+2. Re-sync the affected pages
+3. If Canvas strips the `<style>` block, check with your Canvas admin
+
+### CSS Snippets Not Applying
+
+**Symptom:** CSS snippets aren't affecting Canvas content.
+
+**Solutions:**
+1. Verify the snippet is toggled **on** in settings
+2. Click **Refresh** in settings to detect new snippet files
+3. Check the CSS file has valid syntax (no errors)
+4. Re-sync affected pages after enabling/changing snippets
+5. Inspect the page source in Canvas to verify CSS is included
+6. Your CSS selectors may need higher specificity — try adding `!important`
+
+**Snippet not appearing in list:**
+1. Ensure the file has a `.css` extension
+2. Ensure it's in the correct folder: `.obsidian/plugins/canvas-sync/snippets/`
+3. Click **Refresh** in settings
+
+### Accent Color Not Changing
+
+**Symptom:** Changed accent color but content still uses old color.
+
+**Solutions:**
+1. Ensure you entered a valid hex color (e.g., `#667eea`)
+2. Re-sync affected pages after changing the color
+3. Hard refresh the Canvas page
 
 ## Development
 

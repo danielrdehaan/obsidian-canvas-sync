@@ -1,0 +1,31 @@
+/* Rounded corners and shadows for images */
+
+.cs-container img {
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    max-width: 100%;
+    height: auto;
+}
+
+.cs-container img:hover {
+    transform: scale(1.02);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+/* Center images in their container */
+.cs-container p > img {
+    display: block;
+    margin: 1.5rem auto;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+    .cs-container img {
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+
+    .cs-container img:hover {
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    }
+}
