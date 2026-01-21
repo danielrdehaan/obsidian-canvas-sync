@@ -616,7 +616,12 @@ export class CanvasApi {
 			const module = await this.updateModule(courseId, existing.id, { position, published });
 			return { module, created: false };
 		} else {
-			const module = await this.createModule(courseId, name, position, published);
+			// Create the module first
+			let module = await this.createModule(courseId, name, position, published);
+			// Canvas ignores 'published' on POST, so we need a follow-up PUT to actually publish
+			if (published && !module.published) {
+				module = await this.updateModule(courseId, module.id, { published: true });
+			}
 			return { module, created: true };
 		}
 	}

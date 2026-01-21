@@ -157,7 +157,6 @@ export class SyncEngine {
 			this.findFile(folder, `${folder.name}.md`);
 
 		let moduleName = this.folderNameToTitle(folder.name);
-		let publish = true;
 
 		if (moduleNote) {
 			const parsed = await this.frontmatter.parseFile(moduleNote);
@@ -166,10 +165,11 @@ export class SyncEngine {
 			if (moduleFm.module_name) {
 				moduleName = moduleFm.module_name;
 			}
-			if (moduleFm.publish !== undefined) {
-				publish = moduleFm.publish;
-			}
 		}
+
+		// Modules always default to published - individual items control their own publish state
+		const publish = true;
+		this.log(`Module "${moduleName}" will be published: ${publish}`);
 
 		// Get all markdown files in the folder
 		const files = this.getFilesInFolder(folder);
@@ -507,12 +507,14 @@ export class SyncEngine {
 					progressCallback?.(`  Module: ${module.name}`);
 
 					// Create/update the module in Canvas
+					this.log(`Creating/updating module "${module.name}" with publish=${module.publish}`);
 					const { module: canvasModule } = await this.api.upsertModule(
 						courseId,
 						module.name,
 						module.position,
 						module.publish
 					);
+					this.log(`Module "${module.name}" result: id=${canvasModule.id}, published=${canvasModule.published}`);
 
 					// Get existing module items to avoid duplicates
 					console.log(`[Sync Engine] Getting existing items for module ${canvasModule.id}`);
