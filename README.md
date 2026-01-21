@@ -89,10 +89,13 @@ Module names are derived from folder names by removing the numeric prefix:
 
 ### Item Order
 
-Items within modules are ordered by filename prefix:
-- `01-Lecture.md` → position 1
-- `02-Studio-Session.md` → position 2
-- `03-Assignment.md` → position 3
+Items within modules are ordered by:
+1. `canvas_position` frontmatter (if specified)
+2. Filename alphanumerically (as fallback)
+
+Examples:
+- `01.01-Lecture.md`, `01.02-Studio-Session.md`, `01.03-Assignment.md` → sorted alphabetically
+- Files with `canvas_position: 1` will appear before `canvas_position: 2`
 
 ## Frontmatter Reference
 

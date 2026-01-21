@@ -272,7 +272,8 @@ export class FrontmatterParser {
 	}
 
 	/**
-	 * Extract position from filename or frontmatter
+	 * Extract position from frontmatter
+	 * Returns canvas_position if set, otherwise 0 (sorting will use filename as tiebreaker)
 	 */
 	extractPosition(parsed: ParsedFile): number {
 		// Use frontmatter position if specified
@@ -280,13 +281,7 @@ export class FrontmatterParser {
 			return parsed.canvas.position;
 		}
 
-		// Try to extract from filename (e.g., "01-Lecture.md" -> 1)
-		const match = parsed.filename.match(/^(\d+)-/);
-		if (match) {
-			return parseInt(match[1], 10);
-		}
-
-		// Default to 0
+		// Default to 0 - sorting will use filename alphanumerically as tiebreaker
 		return 0;
 	}
 

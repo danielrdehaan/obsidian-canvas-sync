@@ -196,8 +196,14 @@ export class SyncEngine {
 			});
 		}
 
-		// Sort items by position
-		items.sort((a, b) => a.position - b.position);
+		// Sort items by position, then by filename alphanumerically as tiebreaker
+		items.sort((a, b) => {
+			if (a.position !== b.position) {
+				return a.position - b.position;
+			}
+			// Fall back to alphanumeric filename comparison
+			return a.filePath.localeCompare(b.filePath);
+		});
 
 		return {
 			name: moduleName,
