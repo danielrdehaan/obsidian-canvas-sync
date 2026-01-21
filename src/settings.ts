@@ -181,6 +181,32 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				})
 			);
+
+		// Support Section
+		containerEl.createEl('h2', { text: 'Support' });
+
+		new Setting(containerEl)
+			.setName('GitHub Repository')
+			.setDesc('Report issues, request features, or contribute to the project')
+			.addButton((button) =>
+				button
+					.setButtonText('Open GitHub')
+					.onClick(() => {
+						window.open('https://github.com/danielrdehaan/obsidian-canvas-sync', '_blank');
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Support Development')
+			.setDesc('If you find this plugin useful, consider buying me a coffee!')
+			.addButton((button) =>
+				button
+					.setButtonText('Buy Me a Coffee')
+					.setCta()
+					.onClick(() => {
+						window.open('https://buymeacoffee.com/danielrdehaan', '_blank');
+					})
+			);
 	}
 
 	/**
