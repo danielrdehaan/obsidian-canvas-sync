@@ -1,0 +1,22 @@
+# Build output
+main.js
+*.js.map
+
+# Dependencies
+node_modules/
+
+# User data (contains API tokens)
+data.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# npm
+npm-debug.log*
+
+# TypeScript cache
+*.tsbuildinfo

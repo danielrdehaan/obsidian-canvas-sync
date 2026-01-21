@@ -1,0 +1,10 @@
+{
+	"id": "canvas-sync",
+	"name": "Canvas Sync",
+	"version": "1.0.0",
+	"minAppVersion": "1.0.0",
+	"description": "Sync Obsidian markdown files to Canvas LMS. Supports multiple courses, wiki-link resolution, and automatic shared content discovery.",
+	"author": "Daniel Dehaan",
+	"authorUrl": "https://github.com/danielrdehaan",
+	"isDesktopOnly": true
+}

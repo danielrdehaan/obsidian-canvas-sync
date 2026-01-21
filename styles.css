@@ -1,0 +1,108 @@
+/* Canvas Sync Plugin Styles */
+
+/* Settings Tab */
+.canvas-sync-courses {
+	margin: 16px 0;
+}
+
+.canvas-sync-course-item {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 8px 12px;
+	margin-bottom: 8px;
+	background: var(--background-secondary);
+}
+
+.canvas-sync-course-item .setting-item {
+	border: none;
+	padding: 0;
+}
+
+.canvas-sync-course-item .setting-item-info {
+	flex: 1;
+}
+
+.canvas-sync-course-item .setting-item-control {
+	gap: 4px;
+}
+
+.canvas-sync-no-courses {
+	color: var(--text-muted);
+	font-style: italic;
+	text-align: center;
+	padding: 20px;
+}
+
+/* Status Bar */
+.status-bar-item.canvas-sync-status {
+	padding: 0 8px;
+}
+
+.status-bar-item.canvas-sync-status.syncing {
+	color: var(--text-accent);
+}
+
+.status-bar-item.canvas-sync-status.watching {
+	color: var(--color-green);
+}
+
+.status-bar-item.canvas-sync-status.error {
+	color: var(--color-red);
+}
+
+/* Course Modal */
+.canvas-sync-course-modal {
+	max-width: 500px;
+}
+
+.canvas-sync-course-modal .setting-item {
+	border: none;
+	padding: 12px 0;
+}
+
+.canvas-sync-course-modal .setting-item:last-child {
+	padding-top: 20px;
+	justify-content: flex-end;
+}
+
+/* Sync Progress */
+.canvas-sync-progress {
+	padding: 16px;
+}
+
+.canvas-sync-progress .progress-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 0;
+}
+
+.canvas-sync-progress .progress-item.success {
+	color: var(--color-green);
+}
+
+.canvas-sync-progress .progress-item.failed {
+	color: var(--color-red);
+}
+
+.canvas-sync-progress .progress-item.skipped {
+	color: var(--text-muted);
+}
+
+/* Ribbon Icon Animation */
+.canvas-sync-syncing svg {
+	animation: canvas-sync-spin 1s linear infinite;
+}
+
+.canvas-sync-syncing {
+	color: var(--text-accent);
+}
+
+@keyframes canvas-sync-spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
