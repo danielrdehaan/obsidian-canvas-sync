@@ -88,6 +88,7 @@ export class FrontmatterParser {
 			'graded_discussion',
 			'assignment',
 			'external_url',
+			'syllabus',
 		];
 
 		if (typeof type === 'string' && validTypes.includes(type as CanvasContentType)) {

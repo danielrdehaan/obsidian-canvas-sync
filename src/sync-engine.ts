@@ -430,6 +430,17 @@ export class SyncEngine {
 					externalUrl: parsed.canvas.url,
 					newTab: parsed.canvas.new_tab ?? true,
 				};
+			} else if (type === 'syllabus') {
+				// Syllabus updates the course's built-in syllabus body
+				await this.api.updateSyllabus(courseId, html);
+				return {
+					success: true,
+					filePath: file.path,
+					canvasType: type,
+					title,
+					action: 'updated',
+					courseId,
+				};
 			}
 
 			return {

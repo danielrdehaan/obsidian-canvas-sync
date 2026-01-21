@@ -314,6 +314,23 @@ export class MarkdownConverter {
 		}).join('\n');
 
 		const theme = style?.theme || 'auto';
+		const mobileCompatible = style?.mobileCompatible ?? false;
+
+		// Mobile-compatible styles (transparent/inherit to work with Canvas dark mode)
+		const tableCellBg = mobileCompatible ? 'transparent' : '#fff';
+		const tableCellBgDark = mobileCompatible ? 'transparent' : dark.backgroundAlt;
+		const blockquoteBg = mobileCompatible ? 'rgba(0, 0, 0, 0.03)' : light.backgroundAlt;
+		const blockquoteBgDark = mobileCompatible ? 'rgba(255, 255, 255, 0.05)' : dark.backgroundAlt;
+
+		// Mobile-compatible text colors (inherit lets Canvas control colors for dark mode)
+		const textColor = mobileCompatible ? 'inherit' : light.text;
+		const textColorDark = mobileCompatible ? 'inherit' : dark.text;
+		const headingColor = mobileCompatible ? 'inherit' : '#1a202c';
+		const headingColorDark = mobileCompatible ? 'inherit' : '#f7fafc';
+		const mutedColor = mobileCompatible ? 'inherit' : light.textMuted;
+		const mutedColorDark = mobileCompatible ? 'inherit' : dark.textMuted;
+		const strongColor = mobileCompatible ? 'inherit' : '#1a202c';
+		const strongColorDark = mobileCompatible ? 'inherit' : '#f7fafc';
 
 		// Base styles (always included)
 		const baseStyles = `
@@ -511,37 +528,37 @@ export class MarkdownConverter {
 
 		// Light mode specific styles
 		const lightModeStyles = `
-.cs-container { color: ${light.text}; }
-.cs-h1 { color: #1a202c; }
-.cs-h2 { color: ${light.text}; border-bottom: 2px solid ${light.border}; }
-.cs-h3 { color: ${light.textMuted}; }
-.cs-h4 { color: ${light.textLight}; }
-.cs-td { border: 1px solid ${light.border}; background: #fff; }
+.cs-container { color: ${textColor}; }
+.cs-h1 { color: ${headingColor}; }
+.cs-h2 { color: ${textColor}; border-bottom: 2px solid ${light.border}; }
+.cs-h3 { color: ${mutedColor}; }
+.cs-h4 { color: ${mobileCompatible ? 'inherit' : light.textLight}; }
+.cs-td { border: 1px solid ${light.border}; background: ${tableCellBg}; }
 .cs-code { background: ${light.inlineCodeBackground}; color: ${light.inlineCodeText}; }
-.cs-blockquote { background: ${light.backgroundAlt}; color: ${light.textMuted}; }
+.cs-blockquote { background: ${blockquoteBg}; color: ${mutedColor}; }
 .cs-link { color: ${accent}; border-color: ${accent}; }
 .cs-hr { border-color: ${light.border}; }
-.cs-strong { color: #1a202c; }
-.cs-callout-body { color: #333; }
+.cs-strong { color: ${strongColor}; }
+.cs-callout-body { color: ${mobileCompatible ? 'inherit' : '#333'}; }
 ${calloutLightCss}
 `;
 
 		// Dark mode specific styles
 		const darkModeStyles = `
-.cs-container { color: ${dark.text}; }
-.cs-h1 { color: #f7fafc; border-color: ${accentDark}; }
-.cs-h2 { color: ${dark.text}; border-bottom: 2px solid ${dark.border}; }
-.cs-h3 { color: ${dark.textMuted}; }
-.cs-h4 { color: ${dark.textLight}; }
-.cs-td { border: 1px solid ${dark.border}; background: ${dark.backgroundAlt}; }
+.cs-container { color: ${textColorDark}; }
+.cs-h1 { color: ${headingColorDark}; border-color: ${accentDark}; }
+.cs-h2 { color: ${textColorDark}; border-bottom: 2px solid ${dark.border}; }
+.cs-h3 { color: ${mutedColorDark}; }
+.cs-h4 { color: ${mobileCompatible ? 'inherit' : dark.textLight}; }
+.cs-td { border: 1px solid ${dark.border}; background: ${tableCellBgDark}; }
 .cs-tr:nth-child(even) .cs-td { background-color: rgba(255, 255, 255, 0.03); }
 .cs-pre { background: ${dark.codeBackground}; color: ${dark.codeText}; }
 .cs-code { background: ${dark.inlineCodeBackground}; color: ${dark.inlineCodeText}; }
-.cs-blockquote { background: ${dark.backgroundAlt}; color: ${dark.textMuted}; border-color: ${accentDark}; }
+.cs-blockquote { background: ${blockquoteBgDark}; color: ${mutedColorDark}; border-color: ${accentDark}; }
 .cs-link { color: ${accentDark}; border-color: ${accentDark}; }
 .cs-hr { border-color: ${dark.border}; }
-.cs-strong { color: #f7fafc; }
-.cs-callout-body { color: ${dark.textMuted}; }
+.cs-strong { color: ${strongColorDark}; }
+.cs-callout-body { color: ${mutedColorDark}; }
 ${calloutDarkCss}
 `;
 

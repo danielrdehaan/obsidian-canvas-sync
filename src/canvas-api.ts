@@ -732,6 +732,20 @@ export class CanvasApi {
 		);
 	}
 
+	// --- Syllabus ---
+
+	/**
+	 * Update the course syllabus body
+	 * The syllabus is a special course-level field, not a separate content type
+	 */
+	async updateSyllabus(courseId: number, body: string): Promise<void> {
+		await this.request<CanvasCourse>('PUT', `/courses/${courseId}`, {
+			course: {
+				syllabus_body: body,
+			},
+		});
+	}
+
 	// --- Utilities ---
 
 	/**

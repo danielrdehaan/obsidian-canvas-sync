@@ -1,7 +1,7 @@
 /**
  * Canvas content types
  */
-export type CanvasContentType = 'page' | 'discussion' | 'graded_discussion' | 'assignment' | 'external_url';
+export type CanvasContentType = 'page' | 'discussion' | 'graded_discussion' | 'assignment' | 'external_url' | 'syllabus';
 
 /**
  * Content theme options for Canvas styling
@@ -18,6 +18,8 @@ export interface StyleSettings {
 	accentColor: string;
 	/** List of enabled CSS snippet filenames */
 	enabledSnippets: string[];
+	/** Mobile compatible mode: uses transparent backgrounds for Canvas mobile dark mode support */
+	mobileCompatible: boolean;
 }
 
 /**

@@ -36,6 +36,7 @@ export const DEFAULT_SETTINGS: CanvasSyncSettings = {
 		theme: 'auto',
 		accentColor: '#667eea',
 		enabledSnippets: [],
+		mobileCompatible: false,
 	},
 };
 
@@ -204,6 +205,18 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 					.setValue(this.plugin.settings.style.theme)
 					.onChange(async (value) => {
 						this.plugin.settings.style.theme = value as 'auto' | 'light' | 'dark';
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Mobile Compatible')
+			.setDesc('Use transparent backgrounds for better Canvas mobile app dark mode support. Recommended if students use the Canvas app.')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.style.mobileCompatible)
+					.onChange(async (value) => {
+						this.plugin.settings.style.mobileCompatible = value;
 						await this.plugin.saveSettings();
 					})
 			);
