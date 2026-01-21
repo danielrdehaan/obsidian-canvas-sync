@@ -312,6 +312,14 @@ export class SyncEngine {
 				};
 			} else if (type === 'graded_discussion') {
 				// Graded discussion (discussion topic with grading enabled)
+				// Look up assignment group if specified
+				let assignmentGroupId: number | undefined;
+				if (parsed.canvas.assignment_group) {
+					const { group } = await this.api.upsertAssignmentGroup(courseId, parsed.canvas.assignment_group);
+					assignmentGroupId = group.id;
+					this.log(`Using assignment group: ${parsed.canvas.assignment_group} (ID: ${group.id})`);
+				}
+
 				const { discussion, created } = await this.api.upsertGradedDiscussion(
 					courseId,
 					title,
@@ -323,6 +331,7 @@ export class SyncEngine {
 						unlockAt: parsed.canvas.unlock_at ?? null,
 						published: publish,
 						discussionType: 'threaded',
+						assignmentGroupId,
 					}
 				);
 				return {
@@ -336,6 +345,14 @@ export class SyncEngine {
 					assignmentId: discussion.assignment?.id,
 				};
 			} else if (type === 'assignment') {
+				// Look up assignment group if specified
+				let assignmentGroupId: number | undefined;
+				if (parsed.canvas.assignment_group) {
+					const { group } = await this.api.upsertAssignmentGroup(courseId, parsed.canvas.assignment_group);
+					assignmentGroupId = group.id;
+					this.log(`Using assignment group: ${parsed.canvas.assignment_group} (ID: ${group.id})`);
+				}
+
 				const { assignment, created } = await this.api.upsertAssignment(courseId, {
 					name: title,
 					description: html,
@@ -347,6 +364,7 @@ export class SyncEngine {
 					allowed_extensions: parsed.canvas.allowed_extensions,
 					grading_type: parsed.canvas.grading_type ?? 'points',
 					published: publish,
+					assignment_group_id: assignmentGroupId,
 				});
 				return {
 					success: true,

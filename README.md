@@ -146,6 +146,7 @@ canvas_sync: false         # Exclude from sync
 | `canvas_due_date` | string | — | Due date (YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD) |
 | `canvas_lock_at` | string | — | Lock date (no more posts accepted) |
 | `canvas_unlock_at` | string | — | Unlock date (discussion opens) |
+| `canvas_assignment_group` | string | — | Assignment group name (auto-created if needed) |
 
 #### Assignment-Specific Fields
 
@@ -158,6 +159,7 @@ canvas_sync: false         # Exclude from sync
 | `canvas_submission_types` | array | `['online_upload', 'online_text_entry']` | Allowed submission types |
 | `canvas_allowed_extensions` | array | — | File extensions for uploads (e.g., `['zip', 'wav', 'mp3']`) |
 | `canvas_grading_type` | string | `points` | Grading scheme |
+| `canvas_assignment_group` | string | — | Assignment group name (auto-created if needed) |
 
 **Submission Types:**
 - `online_upload` — File upload
@@ -239,6 +241,7 @@ title: Assignment - Week 03
 canvas_type: graded_discussion
 canvas_points: 4
 canvas_due_date: 2026-02-15T23:59:00
+canvas_assignment_group: Weekly Discussions
 ---
 
 ## Weekly Habit Check-In
@@ -250,6 +253,7 @@ This creates a discussion that:
 - Appears in the Canvas gradebook
 - Has a due date visible to students
 - Can be graded out of the specified points
+- Is organized in the "Weekly Discussions" assignment group (created if it doesn't exist)
 
 ### Example: External URL
 

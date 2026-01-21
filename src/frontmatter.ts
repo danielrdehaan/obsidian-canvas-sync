@@ -58,6 +58,7 @@ export class FrontmatterParser {
 			grading_type: this.parseGradingType(frontmatter.canvas_grading_type),
 			lock_at: typeof frontmatter.canvas_lock_at === 'string' ? frontmatter.canvas_lock_at : undefined,
 			unlock_at: typeof frontmatter.canvas_unlock_at === 'string' ? frontmatter.canvas_unlock_at : undefined,
+			assignment_group: typeof frontmatter.canvas_assignment_group === 'string' ? frontmatter.canvas_assignment_group : undefined,
 			// External URL fields
 			url: typeof frontmatter.canvas_url === 'string' ? frontmatter.canvas_url : undefined,
 			new_tab: typeof frontmatter.canvas_new_tab === 'boolean' ? frontmatter.canvas_new_tab : true,

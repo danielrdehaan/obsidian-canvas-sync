@@ -42,6 +42,7 @@ export interface CanvasFrontmatter {
 	grading_type?: GradingType;
 	lock_at?: string;
 	unlock_at?: string;
+	assignment_group?: string;
 	// External URL fields
 	url?: string;
 	new_tab?: boolean;
@@ -173,6 +174,16 @@ export interface CanvasDiscussion {
 }
 
 /**
+ * Canvas API assignment group response
+ */
+export interface CanvasAssignmentGroup {
+	id: number;
+	name: string;
+	position: number;
+	group_weight: number;
+}
+
+/**
  * Canvas API assignment response
  */
 export interface CanvasAssignment {
@@ -204,6 +215,7 @@ export interface CreateAssignmentData {
 	allowed_extensions?: string[];
 	grading_type?: GradingType;
 	published?: boolean;
+	assignment_group_id?: number;
 }
 
 /**
@@ -220,6 +232,7 @@ export interface UpdateAssignmentData {
 	allowed_extensions?: string[];
 	grading_type?: GradingType;
 	published?: boolean;
+	assignment_group_id?: number;
 }
 
 /**

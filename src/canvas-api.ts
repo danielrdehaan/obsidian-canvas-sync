@@ -3,6 +3,7 @@ import type {
 	CanvasPage,
 	CanvasDiscussion,
 	CanvasAssignment,
+	CanvasAssignmentGroup,
 	CanvasModule,
 	CanvasModuleItem,
 	CanvasCourse,
@@ -286,24 +287,29 @@ export class CanvasApi {
 			unlockAt?: string | null;
 			published?: boolean;
 			discussionType?: 'side_comment' | 'threaded';
+			assignmentGroupId?: number;
 		} = {}
 	): Promise<CanvasDiscussion> {
 		// Create a discussion topic with an embedded assignment to make it graded
+		const assignmentData: Record<string, unknown> = {
+			name: title,
+			points_possible: options.points ?? 0,
+			due_at: options.dueAt ?? null,
+			lock_at: options.lockAt ?? null,
+			unlock_at: options.unlockAt ?? null,
+			published: options.published ?? true,
+			grading_type: 'points',
+		};
+		if (options.assignmentGroupId !== undefined) {
+			assignmentData.assignment_group_id = options.assignmentGroupId;
+		}
 		return this.request<CanvasDiscussion>('POST', `/courses/${courseId}/discussion_topics`, {
 			title,
 			message,
 			published: options.published ?? true,
 			discussion_type: options.discussionType ?? 'threaded',
 			// Including assignment object makes the discussion graded
-			assignment: {
-				name: title,
-				points_possible: options.points ?? 0,
-				due_at: options.dueAt ?? null,
-				lock_at: options.lockAt ?? null,
-				unlock_at: options.unlockAt ?? null,
-				published: options.published ?? true,
-				grading_type: 'points',
-			},
+			assignment: assignmentData,
 		});
 	}
 
@@ -321,6 +327,7 @@ export class CanvasApi {
 			lockAt?: string | null;
 			unlockAt?: string | null;
 			published?: boolean;
+			assignmentGroupId?: number;
 		} = {}
 	): Promise<CanvasDiscussion> {
 		const data: Record<string, unknown> = { message };
@@ -343,6 +350,7 @@ export class CanvasApi {
 			if (options.lockAt !== undefined) assignmentData.lock_at = options.lockAt;
 			if (options.unlockAt !== undefined) assignmentData.unlock_at = options.unlockAt;
 			if (options.published !== undefined) assignmentData.published = options.published;
+			if (options.assignmentGroupId !== undefined) assignmentData.assignment_group_id = options.assignmentGroupId;
 
 			if (Object.keys(assignmentData).length > 0) {
 				await this.request<CanvasAssignment>(
@@ -381,6 +389,7 @@ export class CanvasApi {
 			unlockAt?: string | null;
 			published?: boolean;
 			discussionType?: 'side_comment' | 'threaded';
+			assignmentGroupId?: number;
 		} = {}
 	): Promise<{ discussion: CanvasDiscussion; created: boolean }> {
 		const existing = await this.getGradedDiscussionByTitle(courseId, title);
@@ -421,19 +430,23 @@ export class CanvasApi {
 		courseId: number,
 		data: CreateAssignmentData
 	): Promise<CanvasAssignment> {
+		const assignmentData: Record<string, unknown> = {
+			name: data.name,
+			description: data.description ?? '',
+			points_possible: data.points_possible ?? 0,
+			due_at: data.due_at ?? null,
+			lock_at: data.lock_at ?? null,
+			unlock_at: data.unlock_at ?? null,
+			submission_types: data.submission_types ?? ['online_upload', 'online_text_entry'],
+			allowed_extensions: data.allowed_extensions,
+			grading_type: data.grading_type ?? 'points',
+			published: data.published ?? true,
+		};
+		if (data.assignment_group_id !== undefined) {
+			assignmentData.assignment_group_id = data.assignment_group_id;
+		}
 		return this.request<CanvasAssignment>('POST', `/courses/${courseId}/assignments`, {
-			assignment: {
-				name: data.name,
-				description: data.description ?? '',
-				points_possible: data.points_possible ?? 0,
-				due_at: data.due_at ?? null,
-				lock_at: data.lock_at ?? null,
-				unlock_at: data.unlock_at ?? null,
-				submission_types: data.submission_types ?? ['online_upload', 'online_text_entry'],
-				allowed_extensions: data.allowed_extensions,
-				grading_type: data.grading_type ?? 'points',
-				published: data.published ?? true,
-			},
+			assignment: assignmentData,
 		});
 	}
 
@@ -457,6 +470,7 @@ export class CanvasApi {
 		if (data.allowed_extensions !== undefined) updateData.allowed_extensions = data.allowed_extensions;
 		if (data.grading_type !== undefined) updateData.grading_type = data.grading_type;
 		if (data.published !== undefined) updateData.published = data.published;
+		if (data.assignment_group_id !== undefined) updateData.assignment_group_id = data.assignment_group_id;
 
 		return this.request<CanvasAssignment>(
 			'PUT',
@@ -480,6 +494,62 @@ export class CanvasApi {
 		} else {
 			const assignment = await this.createAssignment(courseId, data);
 			return { assignment, created: true };
+		}
+	}
+
+	// --- Assignment Groups ---
+
+	/**
+	 * Get all assignment groups in a course
+	 */
+	async getAssignmentGroups(courseId: number): Promise<CanvasAssignmentGroup[]> {
+		return this.request<CanvasAssignmentGroup[]>(
+			'GET',
+			`/courses/${courseId}/assignment_groups?per_page=100`
+		);
+	}
+
+	/**
+	 * Get an assignment group by name
+	 */
+	async getAssignmentGroupByName(courseId: number, name: string): Promise<CanvasAssignmentGroup | null> {
+		const groups = await this.getAssignmentGroups(courseId);
+		return groups.find((g) => g.name === name) ?? null;
+	}
+
+	/**
+	 * Create a new assignment group
+	 */
+	async createAssignmentGroup(
+		courseId: number,
+		name: string,
+		position?: number
+	): Promise<CanvasAssignmentGroup> {
+		const data: Record<string, unknown> = { name };
+		if (position !== undefined) {
+			data.position = position;
+		}
+		return this.request<CanvasAssignmentGroup>(
+			'POST',
+			`/courses/${courseId}/assignment_groups`,
+			data
+		);
+	}
+
+	/**
+	 * Get or create an assignment group by name
+	 */
+	async upsertAssignmentGroup(
+		courseId: number,
+		name: string
+	): Promise<{ group: CanvasAssignmentGroup; created: boolean }> {
+		const existing = await this.getAssignmentGroupByName(courseId, name);
+
+		if (existing) {
+			return { group: existing, created: false };
+		} else {
+			const group = await this.createAssignmentGroup(courseId, name);
+			return { group, created: true };
 		}
 	}
 
