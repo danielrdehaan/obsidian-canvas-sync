@@ -4,18 +4,64 @@ Sync your Obsidian markdown files to Canvas LMS. Supports multiple courses, auto
 
 ## Features
 
-- **Multi-Course Support**: Sync to multiple Canvas courses/sections simultaneously
-- **Folder-Based Modules**: Folder structure automatically maps to Canvas modules
-- **Minimal Configuration**: Most files need no special frontmatter
-- **Wiki-Link Resolution**: Obsidian wiki-links convert to Canvas internal links
-- **Shared Content Discovery**: Files linked from courses are auto-synced
-- **Auto-Sync on Save**: Optional watch mode syncs files when saved
+- **Multi-Course Support** — Sync to multiple Canvas courses/sections simultaneously
+- **Folder-Based Modules** — Folder structure automatically maps to Canvas modules
+- **Minimal Configuration** — Most files need no special frontmatter
+- **Wiki-Link Resolution** — Obsidian `[[wiki-links]]` convert to Canvas internal links
+- **Shared Content Discovery** — Files linked from courses are auto-synced
+- **Auto-Sync on Save** — Optional watch mode syncs files when saved
+- **YouTube Embeds** — Embed YouTube videos with standard markdown image syntax
+- **Obsidian Callouts** — Callouts converted to styled Canvas divs
+- **Context Menus** — Right-click files or folders to sync
 
 ## Installation
 
-1. Copy the plugin folder to `.obsidian/plugins/canvas-sync/`
-2. Enable in Settings > Community Plugins
-3. Configure Canvas API credentials
+### Manual Installation
+
+1. Download the latest release from GitHub
+2. Extract to `.obsidian/plugins/canvas-sync/`
+3. Enable the plugin in Settings → Community Plugins
+4. Configure your Canvas API credentials
+
+## Quick Start
+
+### 1. Get Your Canvas API Token
+
+1. Log into your Canvas instance
+2. Click your profile icon → **Settings**
+3. Scroll to **Approved Integrations**
+4. Click **+ New Access Token**
+5. Enter a purpose (e.g., "Obsidian Sync") and expiration date
+6. Click **Generate Token**
+7. **Copy the token immediately** — you won't be able to see it again
+
+### 2. Find Your Course ID(s)
+
+The course ID is in your Canvas URL:
+
+```
+https://canvas.yourschool.edu/courses/12345
+                                     ^^^^^
+                                     This is your course ID
+```
+
+If you teach multiple sections of the same course, you'll have multiple IDs.
+
+### 3. Configure the Plugin
+
+1. Open Obsidian Settings → **Canvas Sync**
+2. Enter your **Canvas API URL** (e.g., `https://canvas.yourschool.edu`)
+3. Paste your **API Token**
+4. Click **Test Connection** to verify
+5. Click **Add Course** and enter:
+   - **Name**: Display name (e.g., "SP26-MUSC-175")
+   - **Path**: Path to your course folder in the vault
+   - **Course IDs**: Your Canvas course ID(s), comma-separated
+
+### 4. Sync!
+
+- Use the ribbon icon (cloud upload) to open the sync menu
+- Or use Command Palette: `Canvas: Sync all courses`
 
 ## Folder Structure
 
@@ -29,113 +75,317 @@ Course-Folder/
 ├── 01-Week-01/               → Module: "Week 01"
 │   ├── 01-Lecture.md         → Page: "Lecture"
 │   ├── 02-Studio-Session.md  → Page: "Studio Session"
-│   └── 03-Assignment.md      → Discussion (needs canvas_type)
+│   └── 03-Assignment.md      → Discussion (inferred from filename)
 ├── 02-Week-02/               → Module: "Week 02"
 │   └── ...
 ```
 
-**Module names** are derived from folder names:
+### Module Names
+
+Module names are derived from folder names by removing the numeric prefix:
 - `00-Course-Info` → "Course Info"
 - `01-Week-01` → "Week 01"
+- `15-Finals-Week` → "Finals Week"
 
-**Item order** is derived from filename prefixes:
+### Item Order
+
+Items within modules are ordered by filename prefix:
 - `01-Lecture.md` → position 1
 - `02-Studio-Session.md` → position 2
 - `03-Assignment.md` → position 3
 
-## Frontmatter
+## Frontmatter Reference
 
-Most files need no special frontmatter. The plugin uses smart defaults:
+Most files need no special frontmatter. The plugin uses smart defaults based on filename and folder structure.
 
-| Source | Canvas Title | Canvas Type |
-|--------|--------------|-------------|
-| `title` in frontmatter | Used if present | — |
-| Filename | Converted (01-Lecture → "Lecture") | Inferred |
-
-### When to Add Canvas Frontmatter
+### When to Add Frontmatter
 
 Only add `canvas_*` fields when you need to override defaults:
 
 ```yaml
 ---
-title: My Lecture
-canvas_type: discussion    # Override type (page is default)
+title: My Custom Page Title
+canvas_type: discussion    # Override type (default: page)
 canvas_sync: false         # Exclude from sync
 ---
 ```
 
 ### Available Fields
 
-| Field | Purpose | Default |
-|-------|---------|---------|
-| `canvas_type` | `page`, `discussion`, `graded_discussion` | Inferred from filename |
-| `canvas_title` | Override the title sent to Canvas | Uses `title` or filename |
-| `canvas_position` | Override order in module | Uses filename prefix |
-| `canvas_sync` | Set `false` to skip this file | `true` |
-| `canvas_publish` | Publish state in Canvas | `true` |
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `canvas_type` | string | Inferred | `page`, `discussion`, or `graded_discussion` |
+| `canvas_title` | string | Uses `title` | Override the title sent to Canvas |
+| `canvas_position` | number | From filename | Override order within module |
+| `canvas_sync` | boolean | `true` | Set `false` to skip this file |
+| `canvas_publish` | boolean | `true` | Publish state in Canvas |
+| `canvas_points` | number | — | Points for graded content |
+| `canvas_due_date` | string | — | Due date (YYYY-MM-DD) |
+
+### Content Type Inference
+
+The plugin infers content type from filenames:
+
+| Filename Contains | Canvas Type |
+|-------------------|-------------|
+| `assignment` | Discussion |
+| `discussion` | Discussion |
+| *(anything else)* | Page |
 
 ### Example: Assignment File
 
-Assignments should be discussions in Canvas:
-
 ```yaml
 ---
-title: Assignment - Week 01
-due_date: 2026-02-01
+title: Week 03 Assignment
 canvas_type: discussion
+canvas_points: 10
+canvas_due_date: 2026-02-15
 ---
+
+## Assignment Instructions
+
+Submit your work by the due date...
 ```
 
 ### Example: Exclude a File
 
 ```yaml
 ---
-title: Draft Notes
+title: Draft Notes (Work in Progress)
 canvas_sync: false
 ---
 ```
 
+## Media Embeds
+
+### YouTube Videos
+
+Embed YouTube videos using standard markdown image syntax:
+
+```markdown
+![Video Title](https://www.youtube.com/watch?v=VIDEO_ID)
+```
+
+Also supports shortened URLs:
+
+```markdown
+![](https://youtu.be/VIDEO_ID)
+```
+
+The plugin converts these to responsive iframes in Canvas.
+
+### Images
+
+Standard markdown images work normally:
+
+```markdown
+![Alt text](path/to/image.png)
+```
+
+## Obsidian Features Support
+
+### Callouts
+
+Obsidian callouts are converted to styled Canvas divs with appropriate colors:
+
+```markdown
+> [!note] Important Information
+> This will render as a blue info box in Canvas.
+
+> [!warning] Deadline Approaching
+> This will render as an orange warning box.
+```
+
+**Supported callout types:** `note`, `tip`, `warning`, `important`, `info`, `example`, `quote`
+
+### Wiki-Links
+
+Wiki-links are converted to Canvas internal links:
+
+```markdown
+See the [[Syllabus]] for details.
+```
+
+Becomes a clickable link to the Syllabus page in Canvas.
+
+**In markdown tables**, use `\|` for the pipe character in wiki-link display text:
+
+```markdown
+| Resource | Link |
+|----------|------|
+| Overview | [[Course-Hub\|Course Hub]] |
+```
+
+### Tables
+
+Tables are styled with:
+- Gradient header row (purple)
+- Clean borders
+- Alternating row colors (on some themes)
+
 ## Commands
+
+Access via Command Palette (Cmd/Ctrl + P):
 
 | Command | Description |
 |---------|-------------|
-| `Canvas: Sync current file` | Sync the active file |
+| `Canvas: Sync current file` | Sync the active file to all configured courses |
 | `Canvas: Sync all courses` | Sync all enabled courses |
-| `Canvas: Sync a course...` | Pick a course to sync |
-| `Canvas: Open in Canvas` | Open current file in Canvas |
+| `Canvas: Sync a course...` | Pick a specific course to sync |
+| `Canvas: Setup course structure` | Create Canvas modules from folder structure |
+| `Canvas: Open in Canvas` | Open the current file's Canvas page in browser |
 | `Canvas: Toggle auto-sync` | Enable/disable watch mode |
 
-## Settings
+## UI Elements
+
+### Ribbon Icon
+
+- Click the **cloud upload icon** in the left ribbon to open the sync menu
+- The icon animates (changes to a loader) during sync operations
+- Menu options:
+  - Sync current file
+  - Sync individual courses
+  - Sync all courses
+  - Toggle auto-sync
+
+### Status Bar
+
+Shows current sync state at the bottom of Obsidian:
+- `Canvas: Watching` — Auto-sync is enabled
+- `Canvas: Idle` — Auto-sync is disabled
+- `Canvas: Syncing...` — Sync in progress
+- `Canvas: Watching (2m ago)` — Last sync time
+
+### Context Menus
+
+**File context menu** (right-click a markdown file):
+- "Sync to Canvas" — Sync this file
+
+**Folder context menu** (right-click a folder inside a course):
+- "Sync folder to Canvas" — Sync all markdown files in this folder
+
+## Settings Reference
 
 ### Canvas API
-- **API URL**: Your Canvas instance (e.g., `https://canvas.yourschool.edu`)
-- **API Token**: Generate at Canvas > Account > Settings > New Access Token
+
+| Setting | Description |
+|---------|-------------|
+| **API URL** | Your Canvas instance URL (e.g., `https://canvas.yourschool.edu`) |
+| **API Token** | Your Canvas API access token |
+| **Test Connection** | Verify credentials are working |
 
 ### Courses
+
 Add courses with:
-- **Name**: Display name (e.g., "SP26-MUSC-175")
-- **Path**: Vault path to course folder
-- **Course IDs**: Comma-separated Canvas course IDs
+- **Name** — Display name for the course
+- **Path** — Vault path to course folder
+- **Course IDs** — Canvas course IDs (comma-separated for multiple sections)
+- **Enable/Disable** — Toggle syncing for individual courses
 
 ### Shared Content
-- **Path**: Folder containing shared resources
-- Files wiki-linked from courses are auto-synced to those courses
 
-## How It Works
+| Setting | Description |
+|---------|-------------|
+| **Shared Content Path** | Folder containing shared resources |
+| **Sync Shared Content** | Auto-sync files wiki-linked from courses |
 
-1. **Module Discovery**: Scans course folder for subfolders
-2. **File Parsing**: Reads frontmatter and content
-3. **Type Inference**: Determines page vs discussion
-4. **HTML Conversion**: Converts markdown with Canvas styling
-5. **API Sync**: Creates/updates pages and discussions
+When enabled, any file in the Shared Content folder that is wiki-linked from a course will automatically sync to that course.
+
+### Sync Behavior
+
+| Setting | Description |
+|---------|-------------|
+| **Sync on File Save** | Automatically sync when files are saved (2-second debounce) |
+| **Show Status Bar** | Display sync status in the status bar |
+| **Debug Mode** | Enable detailed logging (check Developer Console) |
+
+## Shared Content
+
+The plugin supports sharing content across multiple courses:
+
+1. Create a "Shared Knowledge" folder (or similar) in your vault
+2. Set it as the **Shared Content Path** in settings
+3. Wiki-link to shared files from your course content
+
+When you sync a course, any wiki-linked shared files are automatically synced to that course. Each course gets its own copy with correct internal links.
+
+**Example:**
+```
+Shared Knowledge/
+├── Habits-Framework.md
+└── Giving-Feedback.md
+
+Course-A/01-Week-01/Lecture.md contains:
+  "Review the [[Habits-Framework]] before class..."
+
+→ Habits-Framework.md is auto-synced to Course-A
+```
+
+## Troubleshooting
+
+### Wiki-links Not Resolving
+
+**Symptom:** Links appear as italicized text instead of clickable links.
+
+**Causes:**
+1. Target file hasn't been synced yet — sync the entire course first
+2. Filename mismatch — wiki-link target must match the filename exactly
+3. File is in a different module — verify the linked file is in the course
+
+### API Connection Issues
+
+**Symptom:** "Connection failed" or timeout errors.
+
+**Solutions:**
+1. Verify your API URL doesn't have a trailing slash
+2. Check that your token hasn't expired
+3. Try generating a new token
+4. Ensure your institution allows API access
+
+### Files Not Syncing
+
+**Symptom:** Files are skipped during sync.
+
+**Check:**
+1. `canvas_sync: false` in frontmatter excludes the file
+2. Files starting with `_` are skipped (used for module notes)
+3. File must be in a configured course folder
+
+### Auto-sync Not Working
+
+**Symptom:** Files don't sync when saved.
+
+**Solutions:**
+1. Verify "Sync on File Save" is enabled in settings
+2. Check that the file is in a course folder or shared content path
+3. There's a 2-second debounce — wait a moment after saving
+
+### Canvas Shows Old Content
+
+**Symptom:** Canvas page doesn't reflect latest changes.
+
+**Solutions:**
+1. Hard refresh the Canvas page (Cmd/Ctrl + Shift + R)
+2. Check "Last sync" time in status bar
+3. Try manual sync via Command Palette
 
 ## Development
 
 ```bash
+# Install dependencies
 npm install
-npm run build    # Production build
-npm run dev      # Watch mode
+
+# Development build with watch
+npm run dev
+
+# Production build
+npm run build
 ```
+
+## Support
+
+- **Issues & Features:** [GitHub Issues](https://github.com/danielrdehaan/obsidian-canvas-sync/issues)
+- **Support Development:** [Buy Me a Coffee](https://buymeacoffee.com/danielrdehaan)
 
 ## License
 
