@@ -431,15 +431,21 @@ export class SyncEngine {
 					newTab: parsed.canvas.new_tab ?? true,
 				};
 			} else if (type === 'syllabus') {
-				// Syllabus updates the course's built-in syllabus body
+				// Syllabus updates BOTH the course's built-in syllabus body
+				// AND creates a page so it can be added to modules
 				await this.api.updateSyllabus(courseId, html);
+
+				// Also create/update a page with the same content
+				const { page, created } = await this.api.upsertPage(courseId, title, html, publish);
+
 				return {
 					success: true,
 					filePath: file.path,
 					canvasType: type,
 					title,
-					action: 'updated',
+					action: created ? 'created' : 'updated',
 					courseId,
+					pageUrl: page.url, // Include pageUrl so it can be added to modules
 				};
 			}
 
@@ -502,6 +508,10 @@ export class SyncEngine {
 				skipped: 0,
 			};
 
+			// Track which files have been synced to prevent duplicates
+			// (e.g., shared content that also appears in module items)
+			const syncedFilePaths = new Set<string>();
+
 			try {
 				// Get course name
 				const canvasCourse = await this.api.getCourse(courseId);
@@ -514,6 +524,12 @@ export class SyncEngine {
 					progressCallback?.(`  Shared Content (${sharedContentFiles.length} files)...`);
 
 					for (const file of sharedContentFiles) {
+						// Skip if already synced (shouldn't happen in shared content, but defensive)
+						if (syncedFilePaths.has(file.path)) {
+							this.log(`Skipping "${file.path}" - already synced`);
+							continue;
+						}
+
 						const parsed = await this.frontmatter.parseFile(file);
 						const result = await this.syncFile(
 							file,
@@ -524,6 +540,9 @@ export class SyncEngine {
 
 						courseResult.results.push(result);
 
+						// Track synced file (even if skipped, to avoid re-processing)
+						syncedFilePaths.add(file.path);
+
 						if (result.action === 'skipped') {
 							courseResult.skipped++;
 						} else if (result.success) {
@@ -532,6 +551,11 @@ export class SyncEngine {
 							if (result.pageUrl) {
 								pageSlugMap.set(parsed.filename, result.pageUrl);
 								console.log(`[Sync Engine] Updated pageSlugMap: "${parsed.filename}" -> "${result.pageUrl}"`);
+							}
+							// Also update discussionTitleMap for discussions
+							if (result.discussionId) {
+								discussionTitleMap.set(parsed.filename, result.discussionId);
+								console.log(`[Sync Engine] Updated discussionTitleMap: "${parsed.filename}" -> ${result.discussionId}`);
 							}
 						} else {
 							courseResult.failed++;
@@ -577,6 +601,46 @@ export class SyncEngine {
 						const file = this.app.vault.getAbstractFileByPath(item.filePath) as TFile;
 						if (!file) continue;
 
+						// Skip files already synced as shared content, but still add to module
+						if (syncedFilePaths.has(item.filePath)) {
+							this.log(`Skipping sync for "${item.title}" - already synced as shared content`);
+
+							// Still need to add to module - get Canvas URL from pageSlugMap
+							const parsed = await this.frontmatter.parseFile(file);
+							const pageUrl = pageSlugMap.get(parsed.filename);
+							const discussionId = discussionTitleMap.get(parsed.filename);
+
+							if (pageUrl && !existingPageUrls.has(pageUrl)) {
+								try {
+									await this.api.addPageToModule(
+										courseId,
+										canvasModule.id,
+										pageUrl,
+										itemPosition
+									);
+									console.log(`[Sync Engine] Added shared content page to module: ${item.title}`);
+								} catch (moduleItemError) {
+									console.log(`[Sync Engine] Error adding shared content to module: ${moduleItemError}`);
+								}
+							} else if (discussionId && !existingDiscussionIds.has(discussionId)) {
+								try {
+									await this.api.addDiscussionToModule(
+										courseId,
+										canvasModule.id,
+										discussionId,
+										itemPosition
+									);
+									console.log(`[Sync Engine] Added shared content discussion to module: ${item.title}`);
+								} catch (moduleItemError) {
+									console.log(`[Sync Engine] Error adding shared content to module: ${moduleItemError}`);
+								}
+							}
+
+							itemPosition++;
+							progressCallback?.(`    skipped (shared): ${item.title}`);
+							continue;
+						}
+
 						const parsed = await this.frontmatter.parseFile(file);
 
 						const result = await this.syncFile(
@@ -588,13 +652,16 @@ export class SyncEngine {
 
 						courseResult.results.push(result);
 
+						// Track synced file to prevent duplicate syncs in other modules
+						syncedFilePaths.add(item.filePath);
+
 						if (result.action === 'skipped') {
 							courseResult.skipped++;
 						} else if (result.success) {
 							courseResult.success++;
 
 							// Update maps with actual Canvas IDs/URLs for future file conversions
-							if (result.canvasType === 'page' && result.pageUrl) {
+							if ((result.canvasType === 'page' || result.canvasType === 'syllabus') && result.pageUrl) {
 								pageSlugMap.set(parsed.filename, result.pageUrl);
 								console.log(`[Sync Engine] Updated pageSlugMap: "${parsed.filename}" -> "${result.pageUrl}"`);
 							} else if ((result.canvasType === 'discussion' || result.canvasType === 'graded_discussion') && result.discussionId) {
@@ -605,7 +672,8 @@ export class SyncEngine {
 							// Add item to module if not already present
 							console.log(`[Sync Engine] Attempting to add ${result.canvasType} "${result.title}" to module. pageUrl=${result.pageUrl}, discussionId=${result.discussionId}, assignmentId=${result.assignmentId}, externalUrl=${result.externalUrl}`);
 							try {
-								if (result.canvasType === 'page' && result.pageUrl) {
+								if ((result.canvasType === 'page' || result.canvasType === 'syllabus') && result.pageUrl) {
+									// Syllabus creates both a course syllabus AND a page for module inclusion
 									const alreadyExists = existingPageUrls.has(result.pageUrl);
 									console.log(`[Sync Engine] Page ${result.pageUrl} already in module: ${alreadyExists}`);
 									if (!alreadyExists) {
