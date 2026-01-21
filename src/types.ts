@@ -11,6 +11,7 @@ export type SubmissionType =
 	| 'online_text_entry'
 	| 'online_url'
 	| 'media_recording'
+	| 'discussion_topic'
 	| 'none';
 
 /**

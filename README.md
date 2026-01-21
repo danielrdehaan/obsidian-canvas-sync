@@ -75,8 +75,7 @@ Course-Folder/
 ├── 01-Week-01/               → Module: "Week 01"
 │   ├── 01-Lecture.md         → Page: "Lecture"
 │   ├── 02-Studio-Session.md  → Page: "Studio Session"
-│   ├── 03-Discussion.md      → Discussion (with canvas_type: discussion)
-│   └── 04-Assignment.md      → Assignment (with canvas_type: assignment)
+│   └── 03-Assignment.md      → Graded Discussion (with canvas_type: graded_discussion)
 ├── 02-Week-02/               → Module: "Week 02"
 │   └── ...
 ```
@@ -130,10 +129,23 @@ canvas_sync: false         # Exclude from sync
 | `canvas_type` | Canvas Result |
 |---------------|---------------|
 | `page` | Wiki page (default) |
-| `discussion` | Discussion topic |
-| `graded_discussion` | Discussion topic (graded) |
-| `assignment` | Assignment with submissions |
+| `discussion` | Ungraded discussion topic |
+| `graded_discussion` | Graded discussion (appears in gradebook) |
+| `assignment` | Assignment with file/text submissions |
 | `external_url` | Module item linking to URL |
+
+**Discussion vs Graded Discussion:**
+- `discussion` — Creates a standard discussion topic. Students can post and reply, but there's no grade attached.
+- `graded_discussion` — Creates a discussion that appears in the Canvas gradebook. Supports points, due dates, and grading. Technically implemented as an assignment with a linked discussion topic.
+
+#### Graded Discussion Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `canvas_points` | number | `0` | Points possible |
+| `canvas_due_date` | string | — | Due date (YYYY-MM-DDTHH:MM:SS or YYYY-MM-DD) |
+| `canvas_lock_at` | string | — | Lock date (no more posts accepted) |
+| `canvas_unlock_at` | string | — | Unlock date (discussion opens) |
 
 #### Assignment-Specific Fields
 
@@ -204,7 +216,7 @@ canvas_due_date: 2026-02-15
 
 Defaults to `['online_upload', 'online_text_entry']` submission types.
 
-### Example: Discussion Topic
+### Example: Ungraded Discussion
 
 ```yaml
 ---
@@ -216,6 +228,28 @@ canvas_type: discussion
 
 Share your thoughts on...
 ```
+
+### Example: Graded Discussion
+
+For weekly check-ins, habit updates, or any discussion that needs grading:
+
+```yaml
+---
+title: Assignment - Week 03
+canvas_type: graded_discussion
+canvas_points: 4
+canvas_due_date: 2026-02-15T23:59:00
+---
+
+## Weekly Habit Check-In
+
+Share your progress this week...
+```
+
+This creates a discussion that:
+- Appears in the Canvas gradebook
+- Has a due date visible to students
+- Can be graded out of the specified points
 
 ### Example: External URL
 

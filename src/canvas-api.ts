@@ -269,6 +269,131 @@ export class CanvasApi {
 		}
 	}
 
+	// --- Graded Discussions ---
+	// A graded discussion is created via the discussion_topics endpoint with an assignment object
+
+	/**
+	 * Create a graded discussion (discussion topic with grading enabled)
+	 */
+	async createGradedDiscussion(
+		courseId: number,
+		title: string,
+		message: string,
+		options: {
+			points?: number;
+			dueAt?: string | null;
+			lockAt?: string | null;
+			unlockAt?: string | null;
+			published?: boolean;
+			discussionType?: 'side_comment' | 'threaded';
+		} = {}
+	): Promise<CanvasDiscussion> {
+		// Create a discussion topic with an embedded assignment to make it graded
+		return this.request<CanvasDiscussion>('POST', `/courses/${courseId}/discussion_topics`, {
+			title,
+			message,
+			published: options.published ?? true,
+			discussion_type: options.discussionType ?? 'threaded',
+			// Including assignment object makes the discussion graded
+			assignment: {
+				name: title,
+				points_possible: options.points ?? 0,
+				due_at: options.dueAt ?? null,
+				lock_at: options.lockAt ?? null,
+				unlock_at: options.unlockAt ?? null,
+				published: options.published ?? true,
+				grading_type: 'points',
+			},
+		});
+	}
+
+	/**
+	 * Update a graded discussion
+	 * Updates both the discussion content and the assignment settings
+	 */
+	async updateGradedDiscussion(
+		courseId: number,
+		discussionId: number,
+		message: string,
+		options: {
+			points?: number;
+			dueAt?: string | null;
+			lockAt?: string | null;
+			unlockAt?: string | null;
+			published?: boolean;
+		} = {}
+	): Promise<CanvasDiscussion> {
+		const data: Record<string, unknown> = { message };
+		if (options.published !== undefined) {
+			data.published = options.published;
+		}
+
+		// Update the discussion content
+		const discussion = await this.request<CanvasDiscussion>(
+			'PUT',
+			`/courses/${courseId}/discussion_topics/${discussionId}`,
+			data
+		);
+
+		// If the discussion has an assignment, update the assignment settings too
+		if (discussion.assignment?.id) {
+			const assignmentData: Record<string, unknown> = {};
+			if (options.points !== undefined) assignmentData.points_possible = options.points;
+			if (options.dueAt !== undefined) assignmentData.due_at = options.dueAt;
+			if (options.lockAt !== undefined) assignmentData.lock_at = options.lockAt;
+			if (options.unlockAt !== undefined) assignmentData.unlock_at = options.unlockAt;
+			if (options.published !== undefined) assignmentData.published = options.published;
+
+			if (Object.keys(assignmentData).length > 0) {
+				await this.request<CanvasAssignment>(
+					'PUT',
+					`/courses/${courseId}/assignments/${discussion.assignment.id}`,
+					{ assignment: assignmentData }
+				);
+			}
+		}
+
+		return discussion;
+	}
+
+	/**
+	 * Find a graded discussion by title
+	 * Graded discussions have an assignment property
+	 */
+	async getGradedDiscussionByTitle(courseId: number, title: string): Promise<CanvasDiscussion | null> {
+		const discussions = await this.getDiscussions(courseId);
+		return discussions.find(
+			(d) => (d.title === title || d.title.includes(title)) && d.assignment
+		) ?? null;
+	}
+
+	/**
+	 * Create or update a graded discussion
+	 */
+	async upsertGradedDiscussion(
+		courseId: number,
+		title: string,
+		message: string,
+		options: {
+			points?: number;
+			dueAt?: string | null;
+			lockAt?: string | null;
+			unlockAt?: string | null;
+			published?: boolean;
+			discussionType?: 'side_comment' | 'threaded';
+		} = {}
+	): Promise<{ discussion: CanvasDiscussion; created: boolean }> {
+		const existing = await this.getGradedDiscussionByTitle(courseId, title);
+
+		if (existing) {
+			const discussion = await this.updateGradedDiscussion(courseId, existing.id, message, options);
+			return { discussion, created: false };
+		} else {
+			const discussion = await this.createGradedDiscussion(courseId, title, message, options);
+			return { discussion, created: true };
+		}
+	}
+
 	// --- Assignments ---
 
 	/**

@@ -295,7 +295,8 @@ export class SyncEngine {
 					courseId,
 					pageUrl: page.url,
 				};
-			} else if (type === 'discussion' || type === 'graded_discussion') {
+			} else if (type === 'discussion') {
+				// Standard (ungraded) discussion
 				const { discussion, created } = await this.api.upsertDiscussion(courseId, title, html, {
 					published: publish,
 					discussionType: 'threaded',
@@ -308,6 +309,31 @@ export class SyncEngine {
 					action: created ? 'created' : 'updated',
 					courseId,
 					discussionId: discussion.id,
+				};
+			} else if (type === 'graded_discussion') {
+				// Graded discussion (discussion topic with grading enabled)
+				const { discussion, created } = await this.api.upsertGradedDiscussion(
+					courseId,
+					title,
+					html,
+					{
+						points: parsed.canvas.points ?? 0,
+						dueAt: parsed.canvas.due_date ?? null,
+						lockAt: parsed.canvas.lock_at ?? null,
+						unlockAt: parsed.canvas.unlock_at ?? null,
+						published: publish,
+						discussionType: 'threaded',
+					}
+				);
+				return {
+					success: true,
+					filePath: file.path,
+					canvasType: type,
+					title,
+					action: created ? 'created' : 'updated',
+					courseId,
+					discussionId: discussion.id,
+					assignmentId: discussion.assignment?.id,
 				};
 			} else if (type === 'assignment') {
 				const { assignment, created } = await this.api.upsertAssignment(courseId, {
@@ -519,7 +545,8 @@ export class SyncEngine {
 										);
 										console.log(`[Sync Engine] Added page to module: ${result.title}`);
 									}
-								} else if ((result.canvasType === 'discussion' || result.canvasType === 'graded_discussion') && result.discussionId) {
+								} else if (result.canvasType === 'discussion' && result.discussionId) {
+									// Standard (ungraded) discussion - add as Discussion
 									const alreadyExists = existingDiscussionIds.has(result.discussionId);
 									console.log(`[Sync Engine] Discussion ${result.discussionId} already in module: ${alreadyExists}`);
 									if (!alreadyExists) {
@@ -530,6 +557,19 @@ export class SyncEngine {
 											itemPosition
 										);
 										console.log(`[Sync Engine] Added discussion to module: ${result.title}`);
+									}
+								} else if (result.canvasType === 'graded_discussion' && result.assignmentId) {
+									// Graded discussion - add as Assignment (since it's an assignment with discussion_topic type)
+									const alreadyExists = existingAssignmentIds.has(result.assignmentId);
+									console.log(`[Sync Engine] Graded discussion (assignment) ${result.assignmentId} already in module: ${alreadyExists}`);
+									if (!alreadyExists) {
+										await this.api.addAssignmentToModule(
+											courseId,
+											canvasModule.id,
+											result.assignmentId,
+											itemPosition
+										);
+										console.log(`[Sync Engine] Added graded discussion to module: ${result.title}`);
 									}
 								} else if (result.canvasType === 'assignment' && result.assignmentId) {
 									const alreadyExists = existingAssignmentIds.has(result.assignmentId);
