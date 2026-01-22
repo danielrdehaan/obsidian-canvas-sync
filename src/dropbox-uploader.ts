@@ -465,7 +465,9 @@ export class DropboxUploader {
 	 * Generate HTML for an image
 	 */
 	private generateImageHtml(directUrl: string, altText: string): string {
-		return `<img src="${directUrl}" alt="${this.escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto;">`;
+		return `<div class="cs-image-container" style="margin: 16px 0; display: block;">
+<img src="${directUrl}" alt="${this.escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto; display: block;">
+</div>`;
 	}
 
 	/**
@@ -569,6 +571,26 @@ Your browser does not support the video element.
 			return [];
 		}
 
+		// Log account info for debugging
+		const auth = this.api.getAuth();
+		if (auth) {
+			this.log(`Processing ext:// links with Dropbox account: ${auth.displayName || auth.accountId || 'Unknown'}`);
+		}
+
+		this.log(`Dropbox local path configured as: ${dropboxLocalPath}`);
+
+		// List root folders on first ext:// processing to help diagnose path issues
+		try {
+			const rootEntries = await this.api.listFolder('');
+			const folderNames = rootEntries
+				.filter(e => e['.tag'] === 'folder')
+				.map(e => e.name)
+				.slice(0, 20); // Limit to first 20 folders
+			this.log(`Root folders in connected Dropbox: [${folderNames.join(', ')}]`);
+		} catch (listError) {
+			this.log(`Could not list root folders: ${listError}`);
+		}
+
 		const replacements: MediaReplacement[] = [];
 
 		// Pattern: [display text](ext:///path/to/file)
@@ -605,6 +627,22 @@ Your browser does not support the video element.
 
 			try {
 				progressCallback?.(`Getting Dropbox link for ${displayText}...`);
+
+				// First, verify the file exists on Dropbox (helps diagnose sync issues)
+				try {
+					const metadata = await this.api.getMetadata(dropboxApiPath);
+					this.log(`File found on Dropbox: ${metadata['.tag']} at ${(metadata as { path_display?: string }).path_display}`);
+				} catch (metadataError) {
+					const metaErrorMsg = metadataError instanceof Error ? metadataError.message : String(metadataError);
+					this.log(`File NOT found on Dropbox at path: ${dropboxApiPath}`);
+					this.log(`Metadata error: ${metaErrorMsg}`);
+					this.log(`This may indicate: (1) files haven't synced to Dropbox servers yet, (2) path structure differs from local, or (3) different Dropbox account`);
+
+					// Provide helpful fallback with diagnostic info
+					const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link cs-file-not-synced" style="color: #dd6b20;">${this.escapeHtml(displayText)} (not synced to Dropbox)</a>`;
+					replacements.push({ original: fullMatch, replacement: fallbackHtml });
+					continue;
+				}
 
 				// Get or create shared link
 				const sharedUrl = await this.api.createSharedLink(dropboxApiPath);
