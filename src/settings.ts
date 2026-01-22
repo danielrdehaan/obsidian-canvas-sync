@@ -706,6 +706,20 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 						}
 					})
 			);
+
+			// Local Dropbox folder path setting
+			new Setting(container)
+				.setName('Local Dropbox Folder')
+				.setDesc('Path to your Dropbox folder on this computer. Used to convert ext:// links to Dropbox shared links.')
+				.addText((text) =>
+					text
+						.setPlaceholder('/Users/username/Dropbox or /Volumes/Drive/Dropbox')
+						.setValue(this.plugin.settings.media.dropboxLocalPath || '')
+						.onChange(async (value) => {
+							this.plugin.settings.media.dropboxLocalPath = value.trim();
+							await this.plugin.saveSettings();
+						})
+				);
 		} else {
 			// Show connection setup
 			new Setting(container)

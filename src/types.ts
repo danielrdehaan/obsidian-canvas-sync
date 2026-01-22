@@ -376,6 +376,8 @@ export interface MediaSettings {
 	canvasFolderName: string;
 	/** Default upload destination (canvas or dropbox) */
 	uploadDestination: MediaUploadDestination;
+	/** Local filesystem path to Dropbox folder (for ext:// link conversion) */
+	dropboxLocalPath?: string;
 }
 
 /**

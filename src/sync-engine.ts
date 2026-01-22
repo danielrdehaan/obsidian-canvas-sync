@@ -377,6 +377,22 @@ export class SyncEngine {
 				console.error('[Sync Engine] Dropbox media error details:', error);
 				// Continue without media - don't fail the sync
 			}
+
+			// Also process ext:// standard markdown links (files already in Dropbox)
+			try {
+				const extLinkReplacements = await this.dropboxUploader.processExtLinks(
+					parsed.content,
+					progressCallback
+				);
+				if (extLinkReplacements.length > 0) {
+					this.log(`Processed ${extLinkReplacements.length} ext:// links via Dropbox`);
+					mediaReplacements = [...mediaReplacements, ...extLinkReplacements];
+				}
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				this.log('Error processing ext:// links via Dropbox:', errorMsg);
+				// Continue without ext:// links - don't fail the sync
+			}
 		} else if (this.mediaUploader) {
 			// Use Canvas for media storage
 			try {

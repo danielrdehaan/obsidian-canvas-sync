@@ -60,6 +60,11 @@ export class MarkdownConverter {
 			content = this.applyMediaReplacements(content, options.mediaReplacements);
 		}
 
+		// NOTE: We intentionally do NOT call preserveEmptyLines() here.
+		// Inserting <br> tags before markdown parsing breaks heading recognition
+		// (e.g., "<br># Heading" won't be parsed as a heading by Marked).
+		// Visual spacing should be handled via CSS margins on block elements.
+
 		// Convert Obsidian callouts to styled divs
 		content = this.convertCallouts(content, options.style?.accentColor);
 
@@ -68,6 +73,10 @@ export class MarkdownConverter {
 
 		// Convert wiki-links to Canvas links
 		content = this.convertWikiLinks(content, options);
+
+		// Preserve list continuity - reduce excessive blank lines within list items
+		// to prevent Marked from treating them as separate list blocks
+		content = this.preserveListContinuity(content);
 
 		// Convert to HTML
 		let html = this.marked.parse(content) as string;
@@ -87,9 +96,27 @@ export class MarkdownConverter {
 		if (content.startsWith('---')) {
 			const end = content.indexOf('---', 3);
 			if (end !== -1) {
-				return content.slice(end + 3).trim();
+				// Only trim the leading newline after frontmatter, preserve other whitespace
+				return content.slice(end + 3).replace(/^\n/, '');
 			}
 		}
+		return content;
+	}
+
+	/**
+	 * Preserve list continuity by reducing excessive blank lines within list items.
+	 * CommonMark treats 2+ blank lines as a list break, causing numbered lists
+	 * to restart after code blocks or nested content.
+	 */
+	private preserveListContinuity(content: string): string {
+		// Reduce 3+ consecutive blank lines after numbered list items to 2 blank lines
+		// This keeps the list context intact for Marked parser
+		content = content.replace(/(\n\d+\.\s.+)\n{3,}(\s{4,})/g, '$1\n\n$2');
+
+		// Also handle cases where blank lines appear between list items
+		// Reduce 3+ blank lines between numbered list items to 2
+		content = content.replace(/(\n\d+\.\s[^\n]+)\n{3,}(\d+\.\s)/g, '$1\n\n$2');
+
 		return content;
 	}
 
@@ -104,6 +131,20 @@ export class MarkdownConverter {
 			content = content.replace(new RegExp(escapedOriginal, 'g'), replacement);
 		}
 		return content;
+	}
+
+	/**
+	 * Preserve empty lines in content by converting them to <br> tags
+	 * This ensures visual spacing is maintained in the HTML output
+	 */
+	private preserveEmptyLines(content: string): string {
+		// Convert 2+ consecutive empty lines to <br> tags for spacing
+		// Each pair of newlines beyond the first becomes a <br>
+		return content.replace(/\n{3,}/g, (match) => {
+			// For each extra newline beyond 2, add a <br>
+			const extraLines = match.length - 2;
+			return '\n\n' + '<br>\n'.repeat(extraLines);
+		});
 	}
 
 	/**

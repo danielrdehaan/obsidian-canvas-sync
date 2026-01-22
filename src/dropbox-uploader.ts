@@ -547,4 +547,87 @@ Your browser does not support the video element.
 		this.createdFolders.clear();
 		this.log('Cleared all cache');
 	}
+
+	/**
+	 * Process standard markdown links with ext:// protocol.
+	 * For files already in the configured Dropbox folder, generates shared links.
+	 * Pattern: [display text](ext:///path/to/file)
+	 */
+	async processExtLinks(
+		content: string,
+		progressCallback?: (message: string) => void
+	): Promise<MediaReplacement[]> {
+		const dropboxLocalPath = this.settings.dropboxLocalPath;
+
+		if (!dropboxLocalPath) {
+			this.log('No Dropbox local path configured, skipping ext:// link processing');
+			return [];
+		}
+
+		if (!this.api.isAuthenticated()) {
+			this.log('Dropbox not authenticated, skipping ext:// link processing');
+			return [];
+		}
+
+		const replacements: MediaReplacement[] = [];
+
+		// Pattern: [display text](ext:///path/to/file)
+		// Captures: [1] display text, [2] full path after ext://
+		const extLinkPattern = /\[([^\]]+)\]\(ext:\/\/([^)]+)\)/g;
+		let match;
+
+		while ((match = extLinkPattern.exec(content)) !== null) {
+			const displayText = match[1];
+			const extPath = match[2];
+			const fullMatch = match[0];
+
+			// Normalize the path (remove leading slash if present for comparison)
+			const normalizedPath = extPath.startsWith('/') ? extPath : `/${extPath}`;
+
+			this.log(`Processing ext:// link: ${normalizedPath}`);
+
+			// Check if this path is under the configured Dropbox folder
+			const normalizedDropboxPath = dropboxLocalPath.replace(/\\/g, '/');
+
+			if (!normalizedPath.startsWith(normalizedDropboxPath)) {
+				this.log(`Path not in Dropbox folder (${normalizedDropboxPath}), skipping: ${normalizedPath}`);
+				// Return a file:// link as fallback
+				const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link">${this.escapeHtml(displayText)}</a>`;
+				replacements.push({ original: fullMatch, replacement: fallbackHtml });
+				continue;
+			}
+
+			// Convert local path to Dropbox API path
+			// e.g., /Volumes/DRD_Files/Dropbox/_Projects/foo.zip -> /_Projects/foo.zip
+			const dropboxApiPath = normalizedPath.substring(normalizedDropboxPath.length);
+
+			this.log(`Converted to Dropbox API path: ${dropboxApiPath}`);
+
+			try {
+				progressCallback?.(`Getting Dropbox link for ${displayText}...`);
+
+				// Get or create shared link
+				const sharedUrl = await this.api.createSharedLink(dropboxApiPath);
+
+				// Transform to appropriate URL
+				const { DropboxApi } = await import('./dropbox-api');
+				const downloadUrl = DropboxApi.transformToDownloadUrl(sharedUrl);
+
+				// Generate HTML link
+				const html = `<a href="${downloadUrl}" class="cs-link">${this.escapeHtml(displayText)}</a>`;
+
+				replacements.push({ original: fullMatch, replacement: html });
+				this.log(`Created Dropbox link for: ${displayText}`);
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				this.log(`Failed to create Dropbox link for ${dropboxApiPath}: ${errorMsg}`);
+
+				// Fallback to file:// link
+				const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link cs-file-error" style="color: #e53e3e;">${this.escapeHtml(displayText)} (Dropbox error)</a>`;
+				replacements.push({ original: fullMatch, replacement: fallbackHtml });
+			}
+		}
+
+		return replacements;
+	}
 }

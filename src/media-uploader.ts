@@ -336,7 +336,9 @@ export class MediaUploader {
 		const exists = await this.parser.externalFileExists(normalizedPath);
 		if (!exists) {
 			this.log(`External file not found: ${normalizedPath}`);
-			return null;
+			// Return a fallback link instead of null so the embed isn't lost
+			const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link cs-file-missing" style="color: #a0aec0; text-decoration: line-through;">${this.escapeHtml(embed.filename)} (file not found)</a>`;
+			return { original: embed.raw, replacement: fallbackHtml };
 		}
 
 		// Get file stats for size check
