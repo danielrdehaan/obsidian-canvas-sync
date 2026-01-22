@@ -299,3 +299,128 @@ export interface SharedContentDiscovery {
 	/** Wiki links that reference this file */
 	linkedByFiles: { coursePath: string; filePath: string }[];
 }
+
+// ============================================
+// Media Upload Types
+// ============================================
+
+/**
+ * Supported media types for Canvas uploads
+ */
+export type MediaType = 'image' | 'audio' | 'video' | 'pdf' | 'other';
+
+/**
+ * Parsed media embed from markdown content
+ */
+export interface MediaEmbed {
+	/** The raw embed text (e.g., "![[file.png]]" or "![alt](path)") */
+	raw: string;
+	/** The filename (e.g., "file.png") */
+	filename: string;
+	/** Optional alt text */
+	altText?: string;
+	/** Full path within vault (resolved) */
+	vaultPath?: string;
+	/** Media type determined from extension */
+	mediaType?: MediaType;
+}
+
+/**
+ * Cache entry for an uploaded media file
+ */
+export interface MediaCacheEntry {
+	/** Canvas file ID */
+	canvasFileId: number;
+	/** Canvas file URL */
+	canvasUrl: string;
+	/** Content hash (SHA-256) for change detection */
+	contentHash: string;
+	/** Upload timestamp */
+	uploadedAt: number;
+	/** Original vault path */
+	vaultPath: string;
+}
+
+/**
+ * Media upload cache - maps courseId:vaultPath to cache entry
+ */
+export type MediaUploadCache = Record<string, MediaCacheEntry>;
+
+/**
+ * Settings for media upload behavior
+ */
+export interface MediaSettings {
+	/** Enable media uploads */
+	enabled: boolean;
+	/** Upload images (png, jpg, gif, webp, svg) */
+	uploadImages: boolean;
+	/** Upload audio files (mp3, wav, ogg, m4a) */
+	uploadAudio: boolean;
+	/** Upload video files (mp4, webm, mov) */
+	uploadVideo: boolean;
+	/** Upload PDF files */
+	uploadPdf: boolean;
+	/** Maximum file size in bytes (default 100MB) */
+	maxFileSize: number;
+	/** Canvas folder name for uploads */
+	canvasFolderName: string;
+}
+
+/**
+ * Canvas file response from Files API
+ */
+export interface CanvasFile {
+	id: number;
+	uuid: string;
+	folder_id: number;
+	display_name: string;
+	filename: string;
+	url: string;
+	size: number;
+	created_at: string;
+	updated_at: string;
+	content_type: string;
+	'content-type'?: string;
+}
+
+/**
+ * Canvas folder response from Folders API
+ */
+export interface CanvasFolder {
+	id: number;
+	name: string;
+	full_name: string;
+	parent_folder_id: number | null;
+	created_at: string;
+	updated_at: string;
+	files_count: number;
+	folders_count: number;
+}
+
+/**
+ * Parameters for initiating a Canvas file upload (Step 1)
+ */
+export interface CanvasFileUploadParams {
+	name: string;
+	size: number;
+	content_type: string;
+	parent_folder_id?: number;
+	parent_folder_path?: string;
+	on_duplicate?: 'overwrite' | 'rename';
+}
+
+/**
+ * Response from Canvas file upload initiation (Step 1)
+ */
+export interface CanvasFileUploadResponse {
+	upload_url: string;
+	upload_params: Record<string, string>;
+}
+
+/**
+ * Response from Canvas file upload data (Step 2)
+ * Returns a Location header for confirmation
+ */
+export interface CanvasFileUploadDataResponse {
+	location: string;
+}

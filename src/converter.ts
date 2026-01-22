@@ -1,5 +1,6 @@
 import { Marked } from 'marked';
 import type { StyleSettings, ContentTheme } from './types';
+import type { MediaReplacement } from './media-uploader';
 
 /**
  * Options for converting markdown to HTML
@@ -12,6 +13,8 @@ export interface ConvertOptions {
 	style?: StyleSettings;
 	/** Custom CSS content loaded from file */
 	customCss?: string;
+	/** Media embed replacements (from media uploader) */
+	mediaReplacements?: MediaReplacement[];
 }
 
 /**
@@ -51,6 +54,12 @@ export class MarkdownConverter {
 		// Strip frontmatter
 		let content = this.stripFrontmatter(markdown);
 
+		// Apply media replacements before any other processing
+		// This replaces ![[media.ext]] embeds with Canvas HTML
+		if (options.mediaReplacements && options.mediaReplacements.length > 0) {
+			content = this.applyMediaReplacements(content, options.mediaReplacements);
+		}
+
 		// Convert Obsidian callouts to styled divs
 		content = this.convertCallouts(content, options.style?.accentColor);
 
@@ -80,6 +89,19 @@ export class MarkdownConverter {
 			if (end !== -1) {
 				return content.slice(end + 3).trim();
 			}
+		}
+		return content;
+	}
+
+	/**
+	 * Apply media replacements to content
+	 * Replaces media embed syntax with Canvas HTML
+	 */
+	private applyMediaReplacements(content: string, replacements: MediaReplacement[]): string {
+		for (const { original, replacement } of replacements) {
+			// Escape special regex characters in the original string
+			const escapedOriginal = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			content = content.replace(new RegExp(escapedOriginal, 'g'), replacement);
 		}
 		return content;
 	}

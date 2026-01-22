@@ -1,6 +1,7 @@
 import { App, PluginSettingTab, Setting, TextComponent, Notice, TFolder, Modal } from 'obsidian';
 import type CanvasSyncPlugin from './main';
-import type { CourseConfig, StyleSettings } from './types';
+import type { CourseConfig, StyleSettings, MediaSettings } from './types';
+import { DEFAULT_MEDIA_SETTINGS } from './media-uploader';
 
 /**
  * Plugin settings interface
@@ -17,6 +18,8 @@ export interface CanvasSyncSettings {
 	debugMode: boolean;
 	/** Content styling settings */
 	style: StyleSettings;
+	/** Media upload settings */
+	media: MediaSettings;
 }
 
 /**
@@ -38,6 +41,7 @@ export const DEFAULT_SETTINGS: CanvasSyncSettings = {
 		enabledSnippets: [],
 		mobileCompatible: false,
 	},
+	media: DEFAULT_MEDIA_SETTINGS,
 };
 
 /**
@@ -280,6 +284,102 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 					.onClick(async () => {
 						this.renderSnippets(snippetsContainer);
 						new Notice('Snippets list refreshed');
+					})
+			);
+
+		// Media Uploads
+		containerEl.createEl('h2', { text: 'Media Uploads' });
+		containerEl.createEl('p', {
+			text: 'Upload and embed media files (images, audio, video, PDFs) to Canvas. Media embeds like ![[file.mp3]] will be uploaded and converted to HTML players.',
+			cls: 'setting-item-description',
+		});
+
+		new Setting(containerEl)
+			.setName('Enable Media Uploads')
+			.setDesc('Automatically upload and embed media files referenced in your notes')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.media.enabled)
+					.onChange(async (value) => {
+						this.plugin.settings.media.enabled = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Upload Images')
+			.setDesc('Upload image files (PNG, JPG, GIF, WebP, SVG)')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.media.uploadImages)
+					.onChange(async (value) => {
+						this.plugin.settings.media.uploadImages = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Upload Audio')
+			.setDesc('Upload audio files (MP3, WAV, OGG, M4A) with embedded players')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.media.uploadAudio)
+					.onChange(async (value) => {
+						this.plugin.settings.media.uploadAudio = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Upload Video')
+			.setDesc('Upload video files (MP4, WebM, MOV) with embedded players')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.media.uploadVideo)
+					.onChange(async (value) => {
+						this.plugin.settings.media.uploadVideo = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Upload PDFs')
+			.setDesc('Upload PDF files with embedded viewers')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.media.uploadPdf)
+					.onChange(async (value) => {
+						this.plugin.settings.media.uploadPdf = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Max File Size (MB)')
+			.setDesc('Maximum file size for uploads (default: 100 MB)')
+			.addText((text) =>
+				text
+					.setPlaceholder('100')
+					.setValue(String(this.plugin.settings.media.maxFileSize / (1024 * 1024)))
+					.onChange(async (value) => {
+						const mb = parseFloat(value);
+						if (!isNaN(mb) && mb > 0) {
+							this.plugin.settings.media.maxFileSize = mb * 1024 * 1024;
+							await this.plugin.saveSettings();
+						}
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Canvas Folder Name')
+			.setDesc('Folder name in Canvas for uploaded media files')
+			.addText((text) =>
+				text
+					.setPlaceholder('canvas-sync')
+					.setValue(this.plugin.settings.media.canvasFolderName)
+					.onChange(async (value) => {
+						this.plugin.settings.media.canvasFolderName = value.trim() || 'canvas-sync';
+						await this.plugin.saveSettings();
 					})
 			);
 

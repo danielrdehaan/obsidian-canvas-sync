@@ -9,6 +9,10 @@ import type {
 	CanvasCourse,
 	CreateAssignmentData,
 	UpdateAssignmentData,
+	CanvasFile,
+	CanvasFolder,
+	CanvasFileUploadParams,
+	CanvasFileUploadResponse,
 } from './types';
 
 /**
@@ -751,6 +755,312 @@ export class CanvasApi {
 				syllabus_body: body,
 			},
 		});
+	}
+
+	// --- Files ---
+
+	/**
+	 * Get all folders in a course
+	 */
+	async getFolders(courseId: number): Promise<CanvasFolder[]> {
+		return this.request<CanvasFolder[]>(
+			'GET',
+			`/courses/${courseId}/folders?per_page=100`
+		);
+	}
+
+	/**
+	 * Get a folder by path
+	 */
+	async getFolderByPath(courseId: number, folderPath: string): Promise<CanvasFolder | null> {
+		try {
+			// Canvas API expects URL-encoded path
+			const encodedPath = encodeURIComponent(folderPath);
+			return await this.request<CanvasFolder>(
+				'GET',
+				`/courses/${courseId}/folders/by_path/${encodedPath}`
+			);
+		} catch {
+			return null;
+		}
+	}
+
+	/**
+	 * Create a folder in a course
+	 */
+	async createFolder(
+		courseId: number,
+		name: string,
+		parentFolderId?: number
+	): Promise<CanvasFolder> {
+		const data: Record<string, unknown> = {
+			name,
+			locked: false,
+		};
+		if (parentFolderId !== undefined) {
+			data.parent_folder_id = parentFolderId;
+		}
+		return this.request<CanvasFolder>(
+			'POST',
+			`/courses/${courseId}/folders`,
+			data
+		);
+	}
+
+	/**
+	 * Get or create a folder hierarchy in a course
+	 * @param courseId - Canvas course ID
+	 * @param folderPath - Full folder path (e.g., "canvas-sync/images")
+	 * @returns The deepest folder in the hierarchy
+	 */
+	async getOrCreateFolder(courseId: number, folderPath: string): Promise<CanvasFolder> {
+		// First, try to get the folder directly
+		const existing = await this.getFolderByPath(courseId, folderPath);
+		if (existing) {
+			this.log(`Folder exists: ${folderPath}`);
+			return existing;
+		}
+
+		// Get all existing folders to find parent folders
+		const allFolders = await this.getFolders(courseId);
+		const foldersByPath = new Map<string, CanvasFolder>();
+		for (const folder of allFolders) {
+			foldersByPath.set(folder.full_name, folder);
+		}
+
+		// Split path and create folders as needed
+		const parts = folderPath.split('/').filter((p) => p);
+		let currentPath = '';
+		let parentFolderId: number | undefined = undefined;
+
+		for (const part of parts) {
+			currentPath = currentPath ? `${currentPath}/${part}` : part;
+			const fullPath = `course files/${currentPath}`;
+
+			if (foldersByPath.has(fullPath)) {
+				const folder = foldersByPath.get(fullPath)!;
+				parentFolderId = folder.id;
+				this.log(`Folder exists: ${fullPath} (id: ${folder.id})`);
+			} else {
+				// Create this folder
+				this.log(`Creating folder: ${part} (parent: ${parentFolderId})`);
+				const newFolder = await this.createFolder(courseId, part, parentFolderId);
+				foldersByPath.set(`course files/${currentPath}`, newFolder);
+				parentFolderId = newFolder.id;
+			}
+		}
+
+		// Return the final folder
+		const finalPath = `course files/${folderPath}`;
+		return foldersByPath.get(finalPath)!;
+	}
+
+	/**
+	 * Initiate a file upload (Step 1 of Canvas file upload process)
+	 */
+	async initiateFileUpload(
+		courseId: number,
+		params: CanvasFileUploadParams
+	): Promise<CanvasFileUploadResponse> {
+		const data: Record<string, unknown> = {
+			name: params.name,
+			size: params.size,
+			content_type: params.content_type,
+			on_duplicate: params.on_duplicate || 'overwrite',
+		};
+
+		if (params.parent_folder_id !== undefined) {
+			data.parent_folder_id = params.parent_folder_id;
+		} else if (params.parent_folder_path !== undefined) {
+			data.parent_folder_path = params.parent_folder_path;
+		}
+
+		return this.request<CanvasFileUploadResponse>(
+			'POST',
+			`/courses/${courseId}/files`,
+			data
+		);
+	}
+
+	/**
+	 * Upload file data (Step 2 of Canvas file upload process)
+	 * Uses multipart/form-data format
+	 * @returns The Location header URL for confirmation
+	 */
+	async uploadFileData(
+		uploadUrl: string,
+		uploadParams: Record<string, string>,
+		fileData: ArrayBuffer,
+		filename: string,
+		contentType: string
+	): Promise<string> {
+		// Build multipart form data manually
+		const boundary = `----CanvasSyncBoundary${Date.now()}`;
+		const body = this.buildMultipartBody(boundary, uploadParams, fileData, filename, contentType);
+
+		this.log(`Uploading to ${uploadUrl}, body size: ${body.byteLength}`);
+
+		const response = await requestUrl({
+			url: uploadUrl,
+			method: 'POST',
+			headers: {
+				'Content-Type': `multipart/form-data; boundary=${boundary}`,
+			},
+			body: body,
+			throw: false,
+		});
+
+		this.log(`Upload response: status=${response.status}`);
+
+		// Canvas returns a 3xx redirect with Location header
+		// OR a 201 with the file object directly
+		if (response.status >= 300 && response.status < 400) {
+			const location = response.headers['location'] || response.headers['Location'];
+			if (location) {
+				return location;
+			}
+		}
+
+		// If we got a successful response with JSON, the file is already confirmed
+		if (response.status >= 200 && response.status < 300) {
+			if (response.json?.id) {
+				// Return a special marker indicating no confirmation needed
+				return `__ALREADY_CONFIRMED__:${response.json.id}`;
+			}
+		}
+
+		throw new Error(`Upload failed with status ${response.status}: ${response.text}`);
+	}
+
+	/**
+	 * Confirm file upload (Step 3 of Canvas file upload process)
+	 */
+	async confirmFileUpload(locationUrl: string): Promise<CanvasFile> {
+		// Check if already confirmed (from uploadFileData)
+		if (locationUrl.startsWith('__ALREADY_CONFIRMED__:')) {
+			const fileId = parseInt(locationUrl.split(':')[1], 10);
+			// Fetch the file details
+			const file = await this.request<CanvasFile>('GET', `/files/${fileId}`);
+			return file;
+		}
+
+		this.log(`Confirming upload at: ${locationUrl}`);
+
+		const response = await requestUrl({
+			url: locationUrl,
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${this.apiToken}`,
+			},
+		});
+
+		this.log(`Confirm response: status=${response.status}`);
+		return response.json as CanvasFile;
+	}
+
+	/**
+	 * Upload a file to a Canvas course (combines all 3 steps)
+	 * @param courseId - Canvas course ID
+	 * @param filename - Name for the file in Canvas
+	 * @param fileData - Binary file data
+	 * @param contentType - MIME type (e.g., "image/png")
+	 * @param folderId - Optional folder ID to upload to
+	 * @param folderPath - Optional folder path (if folderId not provided)
+	 */
+	async uploadFile(
+		courseId: number,
+		filename: string,
+		fileData: ArrayBuffer,
+		contentType: string,
+		folderId?: number,
+		folderPath?: string
+	): Promise<CanvasFile> {
+		// Step 1: Initiate upload
+		const params: CanvasFileUploadParams = {
+			name: filename,
+			size: fileData.byteLength,
+			content_type: contentType,
+			on_duplicate: 'overwrite',
+		};
+
+		if (folderId !== undefined) {
+			params.parent_folder_id = folderId;
+		} else if (folderPath !== undefined) {
+			params.parent_folder_path = folderPath;
+		}
+
+		this.log(`Step 1: Initiating upload for ${filename} (${fileData.byteLength} bytes)`);
+		const initResponse = await this.initiateFileUpload(courseId, params);
+
+		// Step 2: Upload file data
+		this.log(`Step 2: Uploading data to ${initResponse.upload_url}`);
+		const locationUrl = await this.uploadFileData(
+			initResponse.upload_url,
+			initResponse.upload_params,
+			fileData,
+			filename,
+			contentType
+		);
+
+		// Step 3: Confirm upload
+		this.log(`Step 3: Confirming upload`);
+		const file = await this.confirmFileUpload(locationUrl);
+
+		this.log(`Upload complete: ${file.display_name} (id: ${file.id})`);
+		return file;
+	}
+
+	/**
+	 * Build multipart/form-data body as ArrayBuffer
+	 */
+	private buildMultipartBody(
+		boundary: string,
+		params: Record<string, string>,
+		fileData: ArrayBuffer,
+		filename: string,
+		contentType: string
+	): ArrayBuffer {
+		const encoder = new TextEncoder();
+		const parts: Uint8Array[] = [];
+
+		// Add each form field
+		for (const [key, value] of Object.entries(params)) {
+			const fieldPart = `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`;
+			parts.push(encoder.encode(fieldPart));
+		}
+
+		// Add file field
+		const fileHeader = `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`;
+		parts.push(encoder.encode(fileHeader));
+		parts.push(new Uint8Array(fileData));
+		parts.push(encoder.encode('\r\n'));
+
+		// Add closing boundary
+		const closing = `--${boundary}--\r\n`;
+		parts.push(encoder.encode(closing));
+
+		// Calculate total length
+		let totalLength = 0;
+		for (const part of parts) {
+			totalLength += part.length;
+		}
+
+		// Combine all parts
+		const combined = new Uint8Array(totalLength);
+		let offset = 0;
+		for (const part of parts) {
+			combined.set(part, offset);
+			offset += part.length;
+		}
+
+		return combined.buffer;
+	}
+
+	/**
+	 * Get a file by ID
+	 */
+	async getFile(fileId: number): Promise<CanvasFile> {
+		return this.request<CanvasFile>('GET', `/files/${fileId}`);
 	}
 
 	// --- Utilities ---

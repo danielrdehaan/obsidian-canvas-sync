@@ -3,6 +3,7 @@ import { CanvasApi } from './canvas-api';
 import { MarkdownConverter, ConvertOptions } from './converter';
 import { FrontmatterParser } from './frontmatter';
 import { LinkParser } from './link-parser';
+import type { MediaUploader, MediaReplacement } from './media-uploader';
 import type {
 	CourseConfig,
 	ModuleStructure,
@@ -23,6 +24,7 @@ export class SyncEngine {
 	private converter: MarkdownConverter;
 	private frontmatter: FrontmatterParser;
 	private linkParser: LinkParser;
+	private mediaUploader?: MediaUploader;
 	private debugMode: boolean;
 	private styleSettings?: StyleSettings;
 	private customCss: string = '';
@@ -71,6 +73,13 @@ export class SyncEngine {
 		if (this.debugMode) {
 			console.log('[Sync Engine] setCustomCss called, length:', css.length);
 		}
+	}
+
+	/**
+	 * Set media uploader instance
+	 */
+	setMediaUploader(uploader: MediaUploader): void {
+		this.mediaUploader = uploader;
 	}
 
 	/**
@@ -295,7 +304,8 @@ export class SyncEngine {
 		file: TFile,
 		courseId: number,
 		pageSlugMap: Map<string, string>,
-		discussionTitleMap: Map<string, number>
+		discussionTitleMap: Map<string, number>,
+		progressCallback?: (message: string) => void
 	): Promise<SyncResult> {
 		const parsed = await this.frontmatter.parseFile(file);
 
@@ -314,6 +324,25 @@ export class SyncEngine {
 		const title = this.frontmatter.getEffectiveTitle(parsed);
 		const publish = parsed.canvas.publish !== false;
 
+		// Process media embeds if media uploader is available
+		let mediaReplacements: MediaReplacement[] = [];
+		if (this.mediaUploader) {
+			try {
+				mediaReplacements = await this.mediaUploader.processMediaEmbeds(
+					parsed.content,
+					file.path,
+					courseId,
+					progressCallback
+				);
+				if (mediaReplacements.length > 0) {
+					this.log(`Processed ${mediaReplacements.length} media embeds`);
+				}
+			} catch (error) {
+				this.log('Error processing media embeds:', error);
+				// Continue without media - don't fail the sync
+			}
+		}
+
 		// Build converter options
 		const convertOptions: ConvertOptions = {
 			courseId,
@@ -321,6 +350,7 @@ export class SyncEngine {
 			discussionTitleMap,
 			style: this.styleSettings,
 			customCss: this.customCss || undefined,
+			mediaReplacements,
 		};
 
 		this.log('Converting file:', file.path);
@@ -565,7 +595,8 @@ export class SyncEngine {
 							file,
 							courseId,
 							pageSlugMap,
-							discussionTitleMap
+							discussionTitleMap,
+							progressCallback
 						);
 
 						courseResult.results.push(result);
@@ -677,7 +708,8 @@ export class SyncEngine {
 							file,
 							courseId,
 							pageSlugMap,
-							discussionTitleMap
+							discussionTitleMap,
+							progressCallback
 						);
 
 						courseResult.results.push(result);

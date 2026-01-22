@@ -19,12 +19,16 @@ import {
 } from './settings';
 import { CanvasApi } from './canvas-api';
 import { SyncEngine } from './sync-engine';
-import type { CourseConfig, SyncResult } from './types';
+import { MediaParser } from './media-parser';
+import { MediaUploader, DEFAULT_MEDIA_SETTINGS } from './media-uploader';
+import type { CourseConfig, SyncResult, MediaUploadCache } from './types';
 
 export default class CanvasSyncPlugin extends Plugin {
 	settings: CanvasSyncSettings;
 	canvasApi: CanvasApi;
 	syncEngine: SyncEngine;
+	mediaParser: MediaParser;
+	mediaUploader: MediaUploader;
 
 	private statusBarItem: HTMLElement | null = null;
 	private watchModeEnabled = false;
@@ -32,12 +36,22 @@ export default class CanvasSyncPlugin extends Plugin {
 	private ribbonIconEl: HTMLElement | null = null;
 	private lastSyncTime: Date | null = null;
 	private isSyncing = false;
+	private mediaCache: MediaUploadCache = {};
 
 	constructor(app: App, manifest: PluginManifest) {
 		super(app, manifest);
 		this.settings = DEFAULT_SETTINGS;
 		this.canvasApi = new CanvasApi('', '', false);
 		this.syncEngine = new SyncEngine(app, this.canvasApi, [], false);
+		this.mediaParser = new MediaParser(app, false);
+		this.mediaUploader = new MediaUploader(
+			app,
+			this.canvasApi,
+			this.mediaParser,
+			DEFAULT_MEDIA_SETTINGS,
+			{},
+			false
+		);
 	}
 
 	async onload(): Promise<void> {
@@ -54,6 +68,13 @@ export default class CanvasSyncPlugin extends Plugin {
 		this.syncEngine.setSharedContentPaths(this.settings.sharedContentPaths);
 		this.syncEngine.setDebugMode(this.settings.debugMode);
 		this.syncEngine.setStyleSettings(this.settings.style);
+
+		// Initialize media uploader
+		this.mediaParser.setDebugMode(this.settings.debugMode);
+		this.mediaUploader.setDebugMode(this.settings.debugMode);
+		this.mediaUploader.setSettings(this.settings.media);
+		this.mediaUploader.setCache(this.mediaCache);
+		this.syncEngine.setMediaUploader(this.mediaUploader);
 
 		// Load and set CSS snippets
 		await this.ensureSnippetsFolder();
@@ -111,6 +132,18 @@ export default class CanvasSyncPlugin extends Plugin {
 			savedData?.style
 		);
 
+		// Deep merge media settings to preserve defaults for missing properties
+		this.settings.media = Object.assign(
+			{},
+			DEFAULT_MEDIA_SETTINGS,
+			savedData?.media
+		);
+
+		// Load media cache from saved data
+		if (savedData?.mediaCache) {
+			this.mediaCache = savedData.mediaCache;
+		}
+
 		// Migration: Convert old sharedContentPath to sharedContentPaths
 		const data = this.settings as CanvasSyncSettings & { sharedContentPath?: string };
 		if (data.sharedContentPath && (!this.settings.sharedContentPaths || this.settings.sharedContentPaths.length === 0)) {
@@ -126,7 +159,14 @@ export default class CanvasSyncPlugin extends Plugin {
 	}
 
 	async saveSettings(): Promise<void> {
-		await this.saveData(this.settings);
+		// Get the current media cache from the uploader
+		this.mediaCache = this.mediaUploader.getCache();
+
+		// Save settings and cache together
+		await this.saveData({
+			...this.settings,
+			mediaCache: this.mediaCache,
+		});
 
 		// Update components with new settings
 		this.canvasApi.setCredentials(
@@ -137,6 +177,11 @@ export default class CanvasSyncPlugin extends Plugin {
 		this.syncEngine.setSharedContentPaths(this.settings.sharedContentPaths);
 		this.syncEngine.setDebugMode(this.settings.debugMode);
 		this.syncEngine.setStyleSettings(this.settings.style);
+
+		// Update media uploader settings
+		this.mediaParser.setDebugMode(this.settings.debugMode);
+		this.mediaUploader.setDebugMode(this.settings.debugMode);
+		this.mediaUploader.setSettings(this.settings.media);
 
 		// Reload CSS snippets
 		const customCss = await this.loadEnabledSnippets();
@@ -758,6 +803,21 @@ export default class CanvasSyncPlugin extends Plugin {
 		}
 
 		this.updateStatusBar(this.watchModeEnabled ? 'Watching' : 'Idle');
+
+		// Save media cache after sync completes
+		this.saveMediaCache();
+	}
+
+	/**
+	 * Save the media upload cache to plugin data
+	 */
+	private async saveMediaCache(): Promise<void> {
+		this.mediaCache = this.mediaUploader.getCache();
+		const savedData = await this.loadData() || {};
+		await this.saveData({
+			...savedData,
+			mediaCache: this.mediaCache,
+		});
 	}
 
 	/**
