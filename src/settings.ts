@@ -390,6 +390,18 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 					})
 			);
 
+		new Setting(containerEl)
+			.setName('Upload Other Files')
+			.setDesc('Upload other file types (ZIP, TXT, etc.) as downloadable links')
+			.addToggle((toggle) =>
+				toggle
+					.setValue(this.plugin.settings.media.uploadOther)
+					.onChange(async (value) => {
+						this.plugin.settings.media.uploadOther = value;
+						await this.plugin.saveSettings();
+					})
+			);
+
 		// Max file size with toggle and conditional text input
 		const maxFileSizeContainer = containerEl.createDiv('canvas-sync-max-file-size');
 

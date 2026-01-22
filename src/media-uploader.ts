@@ -20,6 +20,7 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
 	uploadAudio: true,
 	uploadVideo: true,
 	uploadPdf: true,
+	uploadOther: true,
 	enforceMaxFileSize: true,
 	maxFileSize: 100 * 1024 * 1024, // 100MB
 	canvasFolderName: 'canvas-sync',
@@ -129,6 +130,8 @@ export class MediaUploader {
 				return this.settings.uploadVideo;
 			case 'pdf':
 				return this.settings.uploadPdf;
+			case 'other':
+				return this.settings.uploadOther;
 			default:
 				return false;
 		}
@@ -154,8 +157,10 @@ export class MediaUploader {
 				return 'videos';
 			case 'pdf':
 				return 'documents';
+			case 'other':
+				return 'files';
 			default:
-				return 'other';
+				return 'files';
 		}
 	}
 

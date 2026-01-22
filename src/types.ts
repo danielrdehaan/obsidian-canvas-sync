@@ -362,6 +362,8 @@ export interface MediaSettings {
 	uploadVideo: boolean;
 	/** Upload PDF files */
 	uploadPdf: boolean;
+	/** Upload other files (zip, etc.) as download links */
+	uploadOther: boolean;
 	/** Enforce maximum file size limit */
 	enforceMaxFileSize: boolean;
 	/** Maximum file size in bytes (default 100MB) */

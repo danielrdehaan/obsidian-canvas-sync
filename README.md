@@ -306,6 +306,9 @@ The plugin can automatically upload media files (images, audio, video, PDFs) emb
 | Audio | `.mp3`, `.wav`, `.ogg`, `.m4a`, `.flac` | Upload Audio |
 | Video | `.mp4`, `.webm`, `.mov` | Upload Video |
 | Documents | `.pdf` | Upload PDFs |
+| Other | `.zip`, `.txt`, `.json`, etc. | Upload Other Files |
+
+**Note:** "Other" files (any extension not in the above categories) are uploaded and rendered as downloadable links in Canvas. This is useful for distributing project files, templates, or resource bundles.
 
 ### Embedding Media in Notes
 
@@ -709,6 +712,7 @@ When enabled, any file in the Shared Content folder that is wiki-linked from a c
 | **Upload Audio** | Upload audio files (mp3, wav, etc.) |
 | **Upload Video** | Upload video files (mp4, webm, etc.) |
 | **Upload PDFs** | Upload PDF documents |
+| **Upload Other Files** | Upload other file types (zip, txt, etc.) as download links |
 | **Enforce Max File Size** | Enable/disable file size limit |
 | **Max File Size** | Maximum file size for uploads in MB (default: 100) |
 

@@ -83,8 +83,9 @@ export class MediaParser {
 			const extension = this.getExtension(filename);
 			const mediaType = this.getMediaType(filename);
 
-			// Only include if it's a supported media type
-			if (mediaType !== 'other') {
+			// Include all file types (filtering happens in uploader based on settings)
+			// Skip files with no extension (likely wiki-links to notes)
+			if (extension) {
 				embeds.push({
 					raw: match[0],
 					filename,
@@ -110,9 +111,11 @@ export class MediaParser {
 
 			const filename = path.split('/').pop() || path;
 			const mediaType = this.getMediaType(filename);
+			const extension = this.getExtension(filename);
 
-			// Only include if it's a supported media type
-			if (mediaType !== 'other') {
+			// Include all file types (filtering happens in uploader based on settings)
+			// Skip files with no extension
+			if (extension) {
 				embeds.push({
 					raw: match[0],
 					filename,

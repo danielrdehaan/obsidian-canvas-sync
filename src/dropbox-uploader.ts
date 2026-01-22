@@ -91,6 +91,8 @@ export class DropboxUploader {
 				return this.settings.uploadVideo;
 			case 'pdf':
 				return this.settings.uploadPdf;
+			case 'other':
+				return this.settings.uploadOther;
 			default:
 				return false;
 		}
@@ -116,8 +118,10 @@ export class DropboxUploader {
 				return 'video';
 			case 'pdf':
 				return 'pdf';
+			case 'other':
+				return 'files';
 			default:
-				return 'other';
+				return 'files';
 		}
 	}
 
