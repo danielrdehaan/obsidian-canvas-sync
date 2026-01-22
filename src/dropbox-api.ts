@@ -33,6 +33,11 @@ export class DropboxApi {
 	// Redirect URI for Obsidian
 	private static readonly REDIRECT_URI = 'obsidian://canvas-sync-dropbox-auth';
 
+	// Max size for single upload (150 MB)
+	private static readonly MAX_SINGLE_UPLOAD = 150 * 1024 * 1024;
+	// Chunk size for session uploads (100 MB - safe margin under 150 MB limit)
+	private static readonly CHUNK_SIZE = 100 * 1024 * 1024;
+
 	constructor(
 		appKey: string = '',
 		auth: DropboxAuth | null = null,
@@ -404,7 +409,7 @@ export class DropboxApi {
 	/**
 	 * Upload a file to Dropbox
 	 * For files <= 150MB, uses simple upload
-	 * For larger files, would need chunked upload (not implemented here)
+	 * For larger files, uses chunked upload sessions
 	 */
 	async uploadFile(
 		path: string,
@@ -415,6 +420,12 @@ export class DropboxApi {
 		const normalizedPath = path.startsWith('/') ? path : `/${path}`;
 
 		this.log(`Uploading file to ${normalizedPath} (${data.byteLength} bytes)`);
+
+		// Use chunked upload for files larger than 150 MB
+		if (data.byteLength > DropboxApi.MAX_SINGLE_UPLOAD) {
+			this.log(`File exceeds 150 MB, using chunked upload`);
+			return this.uploadFileChunked(normalizedPath, data, mode);
+		}
 
 		const apiArg = {
 			path: normalizedPath,
@@ -428,6 +439,146 @@ export class DropboxApi {
 
 		this.log(`File uploaded: ${metadata.path_display}`);
 		return metadata;
+	}
+
+	/**
+	 * Upload a large file using chunked upload sessions
+	 */
+	private async uploadFileChunked(
+		path: string,
+		data: ArrayBuffer,
+		mode: 'add' | 'overwrite'
+	): Promise<DropboxFileMetadata> {
+		const totalSize = data.byteLength;
+		const chunkSize = DropboxApi.CHUNK_SIZE;
+		let offset = 0;
+
+		// Start upload session
+		const firstChunk = data.slice(0, Math.min(chunkSize, totalSize));
+		const sessionId = await this.uploadSessionStart(firstChunk);
+		offset = firstChunk.byteLength;
+
+		this.log(`Upload session started: ${sessionId}, uploaded ${offset}/${totalSize} bytes`);
+
+		// Upload remaining chunks
+		while (offset < totalSize) {
+			const remaining = totalSize - offset;
+			const currentChunkSize = Math.min(chunkSize, remaining);
+			const chunk = data.slice(offset, offset + currentChunkSize);
+
+			await this.uploadSessionAppend(sessionId, chunk, offset);
+			offset += currentChunkSize;
+
+			this.log(`Uploaded chunk: ${offset}/${totalSize} bytes (${Math.round(offset / totalSize * 100)}%)`);
+		}
+
+		// Finish upload session
+		const metadata = await this.uploadSessionFinish(sessionId, offset, path, mode);
+		this.log(`Chunked upload complete: ${metadata.path_display}`);
+
+		return metadata;
+	}
+
+	/**
+	 * Start an upload session (for large files)
+	 */
+	private async uploadSessionStart(data: ArrayBuffer): Promise<string> {
+		await this.ensureValidToken();
+
+		const response = await requestUrl({
+			url: `${DropboxApi.CONTENT_URL}/files/upload_session/start`,
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${this.auth!.accessToken}`,
+				'Content-Type': 'application/octet-stream',
+				'Dropbox-API-Arg': JSON.stringify({ close: false }),
+			},
+			body: data,
+			throw: false,
+		});
+
+		if (response.status >= 400) {
+			const errorBody = response.text || '';
+			throw new Error(`Upload session start failed: ${response.status} - ${errorBody}`);
+		}
+
+		return response.json.session_id;
+	}
+
+	/**
+	 * Append data to an upload session
+	 */
+	private async uploadSessionAppend(
+		sessionId: string,
+		data: ArrayBuffer,
+		offset: number
+	): Promise<void> {
+		await this.ensureValidToken();
+
+		const response = await requestUrl({
+			url: `${DropboxApi.CONTENT_URL}/files/upload_session/append_v2`,
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${this.auth!.accessToken}`,
+				'Content-Type': 'application/octet-stream',
+				'Dropbox-API-Arg': JSON.stringify({
+					cursor: {
+						session_id: sessionId,
+						offset: offset,
+					},
+					close: false,
+				}),
+			},
+			body: data,
+			throw: false,
+		});
+
+		if (response.status >= 400) {
+			const errorBody = response.text || '';
+			throw new Error(`Upload session append failed: ${response.status} - ${errorBody}`);
+		}
+	}
+
+	/**
+	 * Finish an upload session
+	 */
+	private async uploadSessionFinish(
+		sessionId: string,
+		offset: number,
+		path: string,
+		mode: 'add' | 'overwrite'
+	): Promise<DropboxFileMetadata> {
+		await this.ensureValidToken();
+
+		const response = await requestUrl({
+			url: `${DropboxApi.CONTENT_URL}/files/upload_session/finish`,
+			method: 'POST',
+			headers: {
+				Authorization: `Bearer ${this.auth!.accessToken}`,
+				'Content-Type': 'application/octet-stream',
+				'Dropbox-API-Arg': JSON.stringify({
+					cursor: {
+						session_id: sessionId,
+						offset: offset,
+					},
+					commit: {
+						path: path,
+						mode: mode,
+						autorename: mode === 'add',
+						mute: true,
+					},
+				}),
+			},
+			body: new ArrayBuffer(0), // Empty body for finish
+			throw: false,
+		});
+
+		if (response.status >= 400) {
+			const errorBody = response.text || '';
+			throw new Error(`Upload session finish failed: ${response.status} - ${errorBody}`);
+		}
+
+		return response.json as DropboxFileMetadata;
 	}
 
 	/**
