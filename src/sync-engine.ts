@@ -4,6 +4,7 @@ import { MarkdownConverter, ConvertOptions } from './converter';
 import { FrontmatterParser } from './frontmatter';
 import { LinkParser } from './link-parser';
 import type { MediaUploader, MediaReplacement } from './media-uploader';
+import type { DropboxUploader } from './dropbox-uploader';
 import type {
 	CourseConfig,
 	ModuleStructure,
@@ -25,6 +26,7 @@ export class SyncEngine {
 	private frontmatter: FrontmatterParser;
 	private linkParser: LinkParser;
 	private mediaUploader?: MediaUploader;
+	private dropboxUploader?: DropboxUploader | null;
 	private debugMode: boolean;
 	private styleSettings?: StyleSettings;
 	private customCss: string = '';
@@ -80,6 +82,13 @@ export class SyncEngine {
 	 */
 	setMediaUploader(uploader: MediaUploader): void {
 		this.mediaUploader = uploader;
+	}
+
+	/**
+	 * Set Dropbox uploader instance (for Dropbox-based media storage)
+	 */
+	setDropboxUploader(uploader: DropboxUploader | null): void {
+		this.dropboxUploader = uploader;
 	}
 
 	/**
@@ -305,7 +314,8 @@ export class SyncEngine {
 		courseId: number,
 		pageSlugMap: Map<string, string>,
 		discussionTitleMap: Map<string, number>,
-		progressCallback?: (message: string) => void
+		progressCallback?: (message: string) => void,
+		courseConfig?: CourseConfig
 	): Promise<SyncResult> {
 		const parsed = await this.frontmatter.parseFile(file);
 
@@ -324,9 +334,51 @@ export class SyncEngine {
 		const title = this.frontmatter.getEffectiveTitle(parsed);
 		const publish = parsed.canvas.publish !== false;
 
-		// Process media embeds if media uploader is available
+		// Process media embeds - route to Dropbox or Canvas based on settings
+		// Priority: 1) Course-specific dropbox setting, 2) Global uploadDestination setting
 		let mediaReplacements: MediaReplacement[] = [];
-		if (this.mediaUploader) {
+
+		// Determine if we should use Dropbox
+		const courseDropboxEnabled = courseConfig?.dropbox?.enabled;
+		const globalDestination = this.mediaUploader?.getUploadDestination();
+		const useDropbox = this.dropboxUploader && (
+			courseDropboxEnabled ||
+			(courseDropboxEnabled !== false && globalDestination === 'dropbox')
+		);
+
+		this.log('Media upload routing:', {
+			hasDropboxUploader: !!this.dropboxUploader,
+			hasMediaUploader: !!this.mediaUploader,
+			courseDropboxEnabled,
+			globalDestination,
+			useDropbox,
+			courseName: courseConfig?.name,
+		});
+
+		if (useDropbox && this.dropboxUploader) {
+			// Use Dropbox for media storage
+			// Use course folder path if set, otherwise use a default path based on course name
+			const dropboxFolder = courseConfig?.dropbox?.folderPath || `/Canvas Media/${courseConfig?.name || 'Uploads'}`;
+			this.log(`Using Dropbox for media uploads, folder: ${dropboxFolder}`);
+			try {
+				mediaReplacements = await this.dropboxUploader.processMediaEmbeds(
+					parsed.content,
+					file.path,
+					dropboxFolder,
+					progressCallback
+				);
+				this.log(`Dropbox processMediaEmbeds returned ${mediaReplacements.length} replacements`);
+				if (mediaReplacements.length > 0) {
+					this.log(`Processed ${mediaReplacements.length} media embeds via Dropbox`);
+				}
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				this.log('Error processing media embeds via Dropbox:', errorMsg);
+				console.error('[Sync Engine] Dropbox media error details:', error);
+				// Continue without media - don't fail the sync
+			}
+		} else if (this.mediaUploader) {
+			// Use Canvas for media storage
 			try {
 				mediaReplacements = await this.mediaUploader.processMediaEmbeds(
 					parsed.content,
@@ -335,7 +387,7 @@ export class SyncEngine {
 					progressCallback
 				);
 				if (mediaReplacements.length > 0) {
-					this.log(`Processed ${mediaReplacements.length} media embeds`);
+					this.log(`Processed ${mediaReplacements.length} media embeds via Canvas`);
 				}
 			} catch (error) {
 				this.log('Error processing media embeds:', error);
@@ -596,7 +648,8 @@ export class SyncEngine {
 							courseId,
 							pageSlugMap,
 							discussionTitleMap,
-							progressCallback
+							progressCallback,
+							course
 						);
 
 						courseResult.results.push(result);
@@ -709,7 +762,8 @@ export class SyncEngine {
 							courseId,
 							pageSlugMap,
 							discussionTitleMap,
-							progressCallback
+							progressCallback,
+							course
 						);
 
 						courseResult.results.push(result);
@@ -865,7 +919,9 @@ export class SyncEngine {
 								file,
 								courseId,
 								pageSlugMap,
-								discussionTitleMap
+								discussionTitleMap,
+								undefined,
+								course
 							);
 							results.push(result);
 						}
@@ -888,7 +944,7 @@ export class SyncEngine {
 
 		// Sync to each course ID
 		for (const courseId of matchingCourse.courseIds) {
-			const result = await this.syncFile(file, courseId, pageSlugMap, discussionTitleMap);
+			const result = await this.syncFile(file, courseId, pageSlugMap, discussionTitleMap, undefined, matchingCourse);
 			results.push(result);
 		}
 

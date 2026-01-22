@@ -20,8 +20,10 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
 	uploadAudio: true,
 	uploadVideo: true,
 	uploadPdf: true,
+	enforceMaxFileSize: true,
 	maxFileSize: 100 * 1024 * 1024, // 100MB
 	canvasFolderName: 'canvas-sync',
+	uploadDestination: 'canvas',
 };
 
 /**
@@ -89,6 +91,20 @@ export class MediaUploader {
 	 */
 	setCache(cache: MediaUploadCache): void {
 		this.cache = cache;
+	}
+
+	/**
+	 * Get the default upload destination setting
+	 */
+	getUploadDestination(): 'canvas' | 'dropbox' {
+		return this.settings.uploadDestination;
+	}
+
+	/**
+	 * Check if media uploads are enabled
+	 */
+	isEnabled(): boolean {
+		return this.settings.enabled;
 	}
 
 	/**
@@ -233,8 +249,8 @@ export class MediaUploader {
 			return null;
 		}
 
-		// Check file size
-		if (!this.parser.isWithinSizeLimit(file.stat.size, this.settings.maxFileSize)) {
+		// Check file size (if limit is enforced)
+		if (this.settings.enforceMaxFileSize && !this.parser.isWithinSizeLimit(file.stat.size, this.settings.maxFileSize)) {
 			this.log(`File too large: ${embed.filename} (${file.stat.size} bytes)`);
 			return null;
 		}

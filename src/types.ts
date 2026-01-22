@@ -110,6 +110,8 @@ export interface CourseConfig {
 	path: string;
 	courseIds: number[];
 	enabled: boolean;
+	/** Optional Dropbox settings for this course */
+	dropbox?: CourseDropboxSettings;
 }
 
 /**
@@ -360,10 +362,14 @@ export interface MediaSettings {
 	uploadVideo: boolean;
 	/** Upload PDF files */
 	uploadPdf: boolean;
+	/** Enforce maximum file size limit */
+	enforceMaxFileSize: boolean;
 	/** Maximum file size in bytes (default 100MB) */
 	maxFileSize: number;
 	/** Canvas folder name for uploads */
 	canvasFolderName: string;
+	/** Default upload destination (canvas or dropbox) */
+	uploadDestination: MediaUploadDestination;
 }
 
 /**
@@ -423,4 +429,101 @@ export interface CanvasFileUploadResponse {
  */
 export interface CanvasFileUploadDataResponse {
 	location: string;
+}
+
+// ============================================
+// Dropbox Integration Types
+// ============================================
+
+/**
+ * Dropbox authentication tokens
+ */
+export interface DropboxAuth {
+	/** OAuth2 access token */
+	accessToken: string;
+	/** OAuth2 refresh token */
+	refreshToken: string;
+	/** Token expiration timestamp (Unix ms) */
+	expiresAt: number;
+	/** Dropbox account ID */
+	accountId?: string;
+	/** Display name for UI */
+	displayName?: string;
+}
+
+/**
+ * Upload destination options
+ */
+export type MediaUploadDestination = 'canvas' | 'dropbox';
+
+/**
+ * Per-course Dropbox settings
+ */
+export interface CourseDropboxSettings {
+	/** Enable Dropbox uploads for this course */
+	enabled: boolean;
+	/** Folder path in Dropbox (e.g., "/Canvas Media/MUSC-175") */
+	folderPath: string;
+}
+
+/**
+ * Cache entry for an uploaded Dropbox file
+ */
+export interface DropboxCacheEntry {
+	/** Dropbox file ID */
+	dropboxFileId: string;
+	/** Shared URL (www.dropbox.com) */
+	sharedUrl: string;
+	/** Direct URL (dl.dropboxusercontent.com) for streaming */
+	directUrl: string;
+	/** Content hash (SHA-256) for change detection */
+	contentHash: string;
+	/** Upload timestamp */
+	uploadedAt: number;
+	/** Original vault path */
+	vaultPath: string;
+}
+
+/**
+ * Dropbox upload cache - maps dropboxFolderPath:vaultPath to cache entry
+ */
+export type DropboxUploadCache = Record<string, DropboxCacheEntry>;
+
+/**
+ * Dropbox file metadata from API response
+ */
+export interface DropboxFileMetadata {
+	'.tag': 'file';
+	id: string;
+	name: string;
+	path_lower: string;
+	path_display: string;
+	size: number;
+	content_hash: string;
+}
+
+/**
+ * Dropbox folder metadata from API response
+ */
+export interface DropboxFolderMetadata {
+	'.tag': 'folder';
+	id: string;
+	name: string;
+	path_lower: string;
+	path_display: string;
+}
+
+/**
+ * Dropbox entry (file or folder)
+ */
+export type DropboxEntry = DropboxFileMetadata | DropboxFolderMetadata;
+
+/**
+ * Dropbox shared link metadata
+ */
+export interface DropboxSharedLinkMetadata {
+	'.tag': 'file' | 'folder';
+	url: string;
+	name: string;
+	path_lower: string;
 }

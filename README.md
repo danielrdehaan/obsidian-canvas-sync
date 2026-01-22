@@ -10,6 +10,7 @@ Sync your Obsidian markdown files to Canvas LMS. Supports multiple courses, auto
 - **Wiki-Link Resolution** — Obsidian `[[wiki-links]]` convert to Canvas internal links
 - **Shared Content Discovery** — Files linked from courses are auto-synced
 - **Auto-Sync on Save** — Optional watch mode syncs files when saved
+- **Media Uploads** — Auto-upload images, audio, video, and PDFs to Canvas or Dropbox
 - **YouTube Embeds** — Embed YouTube videos with standard markdown image syntax
 - **Obsidian Callouts** — Callouts converted to styled Canvas divs
 - **Context Menus** — Right-click files or folders to sync
@@ -285,6 +286,122 @@ title: Draft Notes (Work in Progress)
 canvas_sync: false
 ---
 ```
+
+## Media Uploads
+
+The plugin can automatically upload media files (images, audio, video, PDFs) embedded in your notes. You can choose to upload to either **Canvas Files** or **Dropbox**.
+
+### Upload Destinations
+
+| Destination | Pros | Cons |
+|-------------|------|------|
+| **Canvas** | No external dependencies, files stay in LMS | File size limits, slower uploads |
+| **Dropbox** | Large file support, fast CDN, streaming URLs | Requires Dropbox account and app setup |
+
+### Supported File Types
+
+| Type | Extensions | Setting |
+|------|------------|---------|
+| Images | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg` | Upload Images |
+| Audio | `.mp3`, `.wav`, `.ogg`, `.m4a`, `.flac` | Upload Audio |
+| Video | `.mp4`, `.webm`, `.mov` | Upload Video |
+| Documents | `.pdf` | Upload PDFs |
+
+### Embedding Media in Notes
+
+Use standard Obsidian wiki-link syntax:
+
+```markdown
+![[my-audio-file.mp3]]
+![[diagram.png]]
+![[lecture-recording.mp4]]
+```
+
+When you sync, these embeds are replaced with HTML that plays/displays the media from your chosen upload destination.
+
+### Setting Up Dropbox Integration
+
+To use Dropbox for media uploads, you need to create a Dropbox App:
+
+#### Step 1: Create a Dropbox App
+
+1. Go to the [Dropbox App Console](https://www.dropbox.com/developers/apps)
+2. Click **Create app**
+3. Choose **Scoped access**
+4. Choose **Full Dropbox** (or App folder if you prefer limited access)
+5. Name your app (e.g., "Obsidian Canvas Sync")
+6. Click **Create app**
+
+#### Step 2: Configure Permissions
+
+**This step is critical — the app won't work without proper permissions.**
+
+1. In your app settings, click the **Permissions** tab
+2. Enable the following scopes:
+   - `files.content.write` — Required for creating folders and uploading files
+   - `files.content.read` — Required for reading file metadata
+   - `sharing.write` — Required for creating shared links
+3. **Click the "Submit" button at the bottom of the page**
+
+> ⚠️ **Important:** You must click **Submit** after checking the permission boxes. The permissions are not saved until you submit them. This is a common gotcha!
+
+#### Step 3: Configure the Redirect URI
+
+1. In the **Settings** tab of your app, scroll to **OAuth 2**
+2. Under **Redirect URIs**, add: `obsidian://canvas-sync-dropbox-auth`
+3. Click **Add**
+
+#### Step 4: Copy Your App Key
+
+1. In the **Settings** tab, find **App key**
+2. Copy this value — you'll need it in Obsidian
+
+#### Step 5: Connect in Obsidian
+
+1. Open Obsidian Settings → **Canvas Sync**
+2. Scroll to **Media Uploads**
+3. Set **Default Destination** to **Dropbox**
+4. Paste your **Dropbox App Key**
+5. Click **Authorize with Dropbox**
+6. A browser window opens — sign in and authorize the app
+7. You'll be redirected back to Obsidian with a success message
+
+#### Step 6: Configure Upload Folder (Optional)
+
+By default, files are uploaded to `/Canvas Media/{course-name}/`. You can configure a custom folder path per course in the course settings.
+
+### Troubleshooting Dropbox
+
+#### "App not permitted" or "Missing scope" Error
+
+```
+Your app is not permitted to access this endpoint because it does not have the required scope 'files.content.write'
+```
+
+**Solution:**
+1. Go to the [Dropbox App Console](https://www.dropbox.com/developers/apps)
+2. Select your app
+3. Click the **Permissions** tab
+4. Enable the required scopes (`files.content.write`, `files.content.read`, `sharing.write`)
+5. **Click Submit** to save the permissions
+6. In Obsidian, **disconnect and reconnect** to Dropbox (tokens must be refreshed after permission changes)
+
+#### Authorization Callback Not Working
+
+If clicking "Authorize" opens a browser but Obsidian doesn't receive the callback:
+
+1. Make sure the redirect URI is exactly: `obsidian://canvas-sync-dropbox-auth`
+2. Ensure Obsidian is registered as a URL handler on your system
+3. Try closing and reopening Obsidian
+
+#### Files Upload But Don't Play in Canvas
+
+Dropbox shared links may take a moment to propagate. If audio/video doesn't play immediately:
+1. Wait 30 seconds and refresh the Canvas page
+2. Check that the shared link was created (visible in plugin debug logs)
+3. Some Canvas instances block external content — check with your LMS admin
+
+---
 
 ## Media Embeds
 
@@ -578,6 +695,24 @@ When enabled, any file in the Shared Content folder that is wiki-linked from a c
 | **Sync on File Save** | Automatically sync when files are saved (2-second debounce) |
 | **Show Status Bar** | Display sync status in the status bar |
 | **Debug Mode** | Enable detailed logging (check Developer Console) |
+
+### Media Uploads
+
+| Setting | Description |
+|---------|-------------|
+| **Enable Media Uploads** | Master toggle for media upload functionality |
+| **Default Destination** | Where to upload media: Canvas or Dropbox |
+| **Canvas Folder Name** | Folder name in Canvas Files for uploads (default: `canvas-sync`) |
+| **Dropbox App Key** | Your Dropbox app's App Key (from App Console) |
+| **Authorize/Disconnect** | Connect or disconnect your Dropbox account |
+| **Upload Images** | Upload image files (png, jpg, gif, etc.) |
+| **Upload Audio** | Upload audio files (mp3, wav, etc.) |
+| **Upload Video** | Upload video files (mp4, webm, etc.) |
+| **Upload PDFs** | Upload PDF documents |
+| **Enforce Max File Size** | Enable/disable file size limit |
+| **Max File Size** | Maximum file size for uploads in MB (default: 100) |
+
+See [Media Uploads](#media-uploads) for setup instructions.
 
 ### Content Styling
 

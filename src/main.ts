@@ -21,7 +21,9 @@ import { CanvasApi } from './canvas-api';
 import { SyncEngine } from './sync-engine';
 import { MediaParser } from './media-parser';
 import { MediaUploader, DEFAULT_MEDIA_SETTINGS } from './media-uploader';
-import type { CourseConfig, SyncResult, MediaUploadCache } from './types';
+import { DropboxApi } from './dropbox-api';
+import { DropboxUploader } from './dropbox-uploader';
+import type { CourseConfig, SyncResult, MediaUploadCache, DropboxUploadCache, DropboxAuth } from './types';
 
 export default class CanvasSyncPlugin extends Plugin {
 	settings: CanvasSyncSettings;
@@ -29,6 +31,8 @@ export default class CanvasSyncPlugin extends Plugin {
 	syncEngine: SyncEngine;
 	mediaParser: MediaParser;
 	mediaUploader: MediaUploader;
+	dropboxApi: DropboxApi | null = null;
+	dropboxUploader: DropboxUploader | null = null;
 
 	private statusBarItem: HTMLElement | null = null;
 	private watchModeEnabled = false;
@@ -37,6 +41,8 @@ export default class CanvasSyncPlugin extends Plugin {
 	private lastSyncTime: Date | null = null;
 	private isSyncing = false;
 	private mediaCache: MediaUploadCache = {};
+	private dropboxCache: DropboxUploadCache = {};
+	private dropboxCodeVerifier: string | null = null;
 
 	constructor(app: App, manifest: PluginManifest) {
 		super(app, manifest);
@@ -76,6 +82,9 @@ export default class CanvasSyncPlugin extends Plugin {
 		this.mediaUploader.setCache(this.mediaCache);
 		this.syncEngine.setMediaUploader(this.mediaUploader);
 
+		// Initialize Dropbox API and uploader if configured
+		this.initializeDropbox();
+
 		// Load and set CSS snippets
 		await this.ensureSnippetsFolder();
 		const customCss = await this.loadEnabledSnippets();
@@ -113,6 +122,11 @@ export default class CanvasSyncPlugin extends Plugin {
 			})
 		);
 
+		// Register URI handler for Dropbox OAuth callback
+		this.registerObsidianProtocolHandler('canvas-sync-dropbox-auth', async (params) => {
+			await this.handleDropboxAuthCallback(params);
+		});
+
 		console.log('Canvas Sync plugin loaded');
 	}
 
@@ -144,6 +158,11 @@ export default class CanvasSyncPlugin extends Plugin {
 			this.mediaCache = savedData.mediaCache;
 		}
 
+		// Load Dropbox cache from saved data
+		if (savedData?.dropboxCache) {
+			this.dropboxCache = savedData.dropboxCache;
+		}
+
 		// Migration: Convert old sharedContentPath to sharedContentPaths
 		const data = this.settings as CanvasSyncSettings & { sharedContentPath?: string };
 		if (data.sharedContentPath && (!this.settings.sharedContentPaths || this.settings.sharedContentPaths.length === 0)) {
@@ -162,10 +181,16 @@ export default class CanvasSyncPlugin extends Plugin {
 		// Get the current media cache from the uploader
 		this.mediaCache = this.mediaUploader.getCache();
 
-		// Save settings and cache together
+		// Get the Dropbox cache if available
+		if (this.dropboxUploader) {
+			this.dropboxCache = this.dropboxUploader.getCache();
+		}
+
+		// Save settings and caches together
 		await this.saveData({
 			...this.settings,
 			mediaCache: this.mediaCache,
+			dropboxCache: this.dropboxCache,
 		});
 
 		// Update components with new settings
@@ -182,6 +207,9 @@ export default class CanvasSyncPlugin extends Plugin {
 		this.mediaParser.setDebugMode(this.settings.debugMode);
 		this.mediaUploader.setDebugMode(this.settings.debugMode);
 		this.mediaUploader.setSettings(this.settings.media);
+
+		// Update Dropbox components
+		this.initializeDropbox();
 
 		// Reload CSS snippets
 		const customCss = await this.loadEnabledSnippets();
@@ -813,11 +841,172 @@ export default class CanvasSyncPlugin extends Plugin {
 	 */
 	private async saveMediaCache(): Promise<void> {
 		this.mediaCache = this.mediaUploader.getCache();
+		if (this.dropboxUploader) {
+			this.dropboxCache = this.dropboxUploader.getCache();
+		}
 		const savedData = await this.loadData() || {};
 		await this.saveData({
 			...savedData,
 			mediaCache: this.mediaCache,
+			dropboxCache: this.dropboxCache,
 		});
+	}
+
+	// ============================================
+	// Dropbox Integration Methods
+	// ============================================
+
+	/**
+	 * Initialize Dropbox API and uploader
+	 */
+	private initializeDropbox(): void {
+		// Create or update Dropbox API instance
+		if (!this.dropboxApi) {
+			this.dropboxApi = new DropboxApi(
+				this.settings.dropboxAppKey || '',
+				this.settings.dropboxAuth || null,
+				this.settings.debugMode,
+				(auth) => this.handleDropboxAuthUpdate(auth)
+			);
+		} else {
+			this.dropboxApi.setAppKey(this.settings.dropboxAppKey || '');
+			this.dropboxApi.setAuth(this.settings.dropboxAuth || null);
+			this.dropboxApi.setDebugMode(this.settings.debugMode);
+		}
+
+		// Create or update Dropbox uploader if authenticated
+		if (this.dropboxApi.isAuthenticated()) {
+			if (!this.dropboxUploader) {
+				this.dropboxUploader = new DropboxUploader(
+					this.app,
+					this.dropboxApi,
+					this.mediaParser,
+					this.settings.media,
+					this.dropboxCache,
+					this.settings.debugMode
+				);
+			} else {
+				this.dropboxUploader.setSettings(this.settings.media);
+				this.dropboxUploader.setCache(this.dropboxCache);
+				this.dropboxUploader.setDebugMode(this.settings.debugMode);
+			}
+
+			// Update sync engine with Dropbox uploader
+			this.syncEngine.setDropboxUploader(this.dropboxUploader);
+		} else {
+			this.dropboxUploader = null;
+			this.syncEngine.setDropboxUploader(null);
+		}
+	}
+
+	/**
+	 * Handle auth token updates from Dropbox API (e.g., token refresh)
+	 */
+	private handleDropboxAuthUpdate(auth: DropboxAuth): void {
+		this.settings.dropboxAuth = auth;
+		this.saveSettings();
+	}
+
+	/**
+	 * Start the Dropbox OAuth2 authorization flow
+	 */
+	async startDropboxAuth(): Promise<void> {
+		if (!this.settings.dropboxAppKey) {
+			new Notice('Please enter your Dropbox App Key first');
+			return;
+		}
+
+		try {
+			// Initialize Dropbox API with app key
+			this.initializeDropbox();
+
+			// Generate authorization URL
+			const { url, codeVerifier } = await this.dropboxApi!.getAuthorizationUrl();
+
+			// Store the code verifier for the callback
+			this.dropboxCodeVerifier = codeVerifier;
+
+			// Open the authorization URL in the default browser
+			window.open(url, '_blank');
+
+			new Notice('Please authorize Canvas Sync in your browser');
+		} catch (error) {
+			console.error('Dropbox auth error:', error);
+			new Notice(`Failed to start Dropbox authorization: ${error}`);
+		}
+	}
+
+	/**
+	 * Handle the OAuth callback from Dropbox
+	 */
+	async handleDropboxAuthCallback(params: Record<string, string>): Promise<void> {
+		const { code, error, error_description } = params;
+
+		if (error) {
+			new Notice(`Dropbox authorization failed: ${error_description || error}`);
+			return;
+		}
+
+		if (!code) {
+			new Notice('No authorization code received from Dropbox');
+			return;
+		}
+
+		if (!this.dropboxCodeVerifier) {
+			new Notice('Authorization session expired. Please try again.');
+			return;
+		}
+
+		try {
+			// Exchange the code for tokens
+			const auth = await this.dropboxApi!.exchangeCodeForToken(code, this.dropboxCodeVerifier);
+
+			// Clear the code verifier
+			this.dropboxCodeVerifier = null;
+
+			// Update settings with new auth
+			this.settings.dropboxAuth = auth;
+			await this.saveSettings();
+
+			// Reinitialize Dropbox components
+			this.initializeDropbox();
+
+			new Notice(`Connected to Dropbox as ${auth.displayName || auth.accountId || 'unknown user'}`);
+
+			// Refresh the settings tab if it's open
+			// @ts-ignore - accessing private property
+			this.app.setting?.openTabById?.(this.manifest.id);
+		} catch (error) {
+			console.error('Dropbox token exchange error:', error);
+			new Notice(`Failed to complete Dropbox authorization: ${error}`);
+		}
+	}
+
+	/**
+	 * Disconnect from Dropbox
+	 */
+	async disconnectDropbox(): Promise<void> {
+		try {
+			// Revoke the access token if possible
+			if (this.dropboxApi?.isAuthenticated()) {
+				await this.dropboxApi.revokeAccess();
+			}
+		} catch (error) {
+			// Ignore errors during revocation
+			console.log('Error revoking Dropbox access:', error);
+		}
+
+		// Clear auth from settings
+		this.settings.dropboxAuth = undefined;
+
+		// Clear Dropbox components
+		this.dropboxApi = null;
+		this.dropboxUploader = null;
+		this.syncEngine.setDropboxUploader(null);
+
+		await this.saveSettings();
+
+		new Notice('Disconnected from Dropbox');
 	}
 
 	/**
