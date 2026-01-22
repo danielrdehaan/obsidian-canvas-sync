@@ -357,8 +357,18 @@ export class SyncEngine {
 
 		if (useDropbox && this.dropboxUploader) {
 			// Use Dropbox for media storage
-			// Use course folder path if set, otherwise use a default path based on course name
-			const dropboxFolder = courseConfig?.dropbox?.folderPath || `/Canvas Media/${courseConfig?.name || 'Uploads'}`;
+			// Determine folder path: shared content goes to dedicated folder, course content to course folder
+			let dropboxFolder: string;
+
+			if (this.linkParser.isSharedContent(file.path)) {
+				// Shared content media goes to a dedicated Shared Resources folder
+				dropboxFolder = '/Canvas Media/Shared Resources';
+				this.log(`File is shared content, using shared resources folder: ${dropboxFolder}`);
+			} else {
+				// Regular course content uses course-specific folder
+				dropboxFolder = courseConfig?.dropbox?.folderPath || `/Canvas Media/${courseConfig?.name || 'Uploads'}`;
+			}
+
 			this.log(`Using Dropbox for media uploads, folder: ${dropboxFolder}`);
 			try {
 				mediaReplacements = await this.dropboxUploader.processMediaEmbeds(
