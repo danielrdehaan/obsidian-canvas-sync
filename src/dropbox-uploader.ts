@@ -465,9 +465,7 @@ export class DropboxUploader {
 	 * Generate HTML for an image
 	 */
 	private generateImageHtml(directUrl: string, altText: string): string {
-		return `<div class="cs-image-container" style="margin: 16px 0; display: block;">
-<img src="${directUrl}" alt="${this.escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto; display: block;">
-</div>`;
+		return `<p style="margin: 16px 0;"><img src="${directUrl}" alt="${this.escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto; display: block;"></p>`;
 	}
 
 	/**

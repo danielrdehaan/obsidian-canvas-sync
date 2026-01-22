@@ -480,9 +480,7 @@ export class MediaUploader {
 	 * Generate HTML for an image
 	 */
 	private generateImageHtml(previewUrl: string, altText: string): string {
-		return `<div class="cs-image-container" style="margin: 16px 0; display: block;">
-<img src="${previewUrl}" alt="${this.escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto; display: block;">
-</div>`;
+		return `<p style="margin: 16px 0;"><img src="${previewUrl}" alt="${this.escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto; display: block;"></p>`;
 	}
 
 	/**
