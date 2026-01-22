@@ -96,7 +96,28 @@ export class MediaParser {
 			}
 		}
 
-		// Pattern 2: Standard markdown image syntax - ![alt](path)
+		// Pattern 2: External file embeds - ![ext:///path/to/file] or ![ext:///path/to/file|width]
+		const externalEmbedPattern = /!\[ext:\/\/([^\]|]+)(?:\|(\d+))?\]/g;
+
+		while ((match = externalEmbedPattern.exec(content)) !== null) {
+			const externalPath = match[1].trim();
+			const filename = externalPath.split('/').pop() || externalPath;
+			const extension = this.getExtension(filename);
+			const mediaType = this.getMediaType(filename);
+
+			if (extension) {
+				embeds.push({
+					raw: match[0],
+					filename,
+					externalPath,
+					isExternal: true,
+					mediaType,
+				});
+				this.log(`Found external embed: ${externalPath} (${mediaType})`);
+			}
+		}
+
+		// Pattern 3: Standard markdown image syntax - ![alt](path)
 		// But skip YouTube URLs which are handled by the YouTube embed converter
 		const markdownEmbedPattern = /!\[([^\]]*)\]\(([^)]+)\)/g;
 
@@ -232,6 +253,41 @@ export class MediaParser {
 	 */
 	async readMediaFile(file: TFile): Promise<ArrayBuffer> {
 		return await this.app.vault.readBinary(file);
+	}
+
+	/**
+	 * Read an external file's binary data from the filesystem
+	 */
+	async readExternalFile(absolutePath: string): Promise<ArrayBuffer> {
+		const fs = require('fs').promises;
+		const buffer = await fs.readFile(absolutePath);
+		return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+	}
+
+	/**
+	 * Check if an external file exists at the given absolute path
+	 */
+	async externalFileExists(absolutePath: string): Promise<boolean> {
+		const fs = require('fs').promises;
+		try {
+			await fs.access(absolutePath);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Get file stats for an external file
+	 */
+	async getExternalFileStats(absolutePath: string): Promise<{ size: number } | null> {
+		const fs = require('fs').promises;
+		try {
+			const stats = await fs.stat(absolutePath);
+			return { size: stats.size };
+		} catch {
+			return null;
+		}
 	}
 
 	/**

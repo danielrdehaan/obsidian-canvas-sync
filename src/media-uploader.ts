@@ -247,6 +247,11 @@ export class MediaUploader {
 			return null;
 		}
 
+		// Handle external files (ext:// embeds)
+		if (embed.isExternal && embed.externalPath) {
+			return this.processExternalEmbed(embed, courseId, mediaType, progressCallback);
+		}
+
 		// Resolve the file in the vault
 		const file = this.parser.resolveMediaFile(embed, sourcePath);
 		if (!file) {
@@ -282,11 +287,11 @@ export class MediaUploader {
 		}
 
 		// Upload the file
-		progressCallback?.(`Uploading ${embed.filename}...`);
-		this.log(`Uploading ${embed.filename} to Canvas`);
+		progressCallback?.(`Uploading ${file.name}...`);
+		this.log(`Uploading ${file.name} to Canvas`);
 
 		const canvasFile = await this.uploadWithRetry(
-			file,
+			file.name,
 			fileData,
 			mediaType,
 			courseId
@@ -314,23 +319,110 @@ export class MediaUploader {
 	}
 
 	/**
+	 * Process an external file embed (ext:// syntax)
+	 */
+	private async processExternalEmbed(
+		embed: MediaEmbed,
+		courseId: number,
+		mediaType: MediaType,
+		progressCallback?: (message: string) => void
+	): Promise<MediaReplacement | null> {
+		const externalPath = embed.externalPath!;
+
+		// Normalize path (handle Windows backslashes)
+		const normalizedPath = externalPath.replace(/\\/g, '/');
+
+		// Check if file exists
+		const exists = await this.parser.externalFileExists(normalizedPath);
+		if (!exists) {
+			this.log(`External file not found: ${normalizedPath}`);
+			return null;
+		}
+
+		// Get file stats for size check
+		const stats = await this.parser.getExternalFileStats(normalizedPath);
+		if (!stats) {
+			this.log(`Could not get stats for external file: ${normalizedPath}`);
+			return null;
+		}
+
+		// Check file size (if limit is enforced)
+		if (this.settings.enforceMaxFileSize && !this.parser.isWithinSizeLimit(stats.size, this.settings.maxFileSize)) {
+			this.log(`External file too large: ${embed.filename} (${stats.size} bytes)`);
+			return null;
+		}
+
+		// Read file data
+		const fileData = await this.parser.readExternalFile(normalizedPath);
+		const contentHash = await this.parser.computeFileHash(fileData);
+
+		// Check cache (use ext: prefix to avoid collisions with vault paths)
+		const cacheKey = this.getCacheKey(courseId, `ext:${normalizedPath}`);
+		const cached = this.cache[cacheKey];
+
+		if (cached && cached.contentHash === contentHash) {
+			// Cache hit - file hasn't changed
+			this.log(`Cache hit for external file ${embed.filename}`);
+			const html = this.generateCanvasHtml(
+				cached.canvasFileId,
+				cached.canvasUrl,
+				mediaType,
+				embed.altText || embed.filename,
+				courseId
+			);
+			return { original: embed.raw, replacement: html };
+		}
+
+		// Upload the file
+		progressCallback?.(`Uploading external file ${embed.filename}...`);
+		this.log(`Uploading external file ${embed.filename} to Canvas`);
+
+		const canvasFile = await this.uploadWithRetry(
+			embed.filename,
+			fileData,
+			mediaType,
+			courseId
+		);
+
+		// Update cache
+		this.cache[cacheKey] = {
+			canvasFileId: canvasFile.id,
+			canvasUrl: canvasFile.url,
+			contentHash,
+			uploadedAt: Date.now(),
+			vaultPath: `ext:${normalizedPath}`,
+		};
+
+		// Generate HTML replacement
+		const html = this.generateCanvasHtml(
+			canvasFile.id,
+			canvasFile.url,
+			mediaType,
+			embed.altText || embed.filename,
+			courseId
+		);
+
+		return { original: embed.raw, replacement: html };
+	}
+
+	/**
 	 * Upload a file with retry logic for rate limiting
 	 */
 	private async uploadWithRetry(
-		file: TFile,
+		filename: string,
 		fileData: ArrayBuffer,
 		mediaType: MediaType,
 		courseId: number,
 		maxRetries = 3
 	): Promise<CanvasFile> {
 		const folder = await this.getUploadFolder(courseId, mediaType);
-		const mimeType = this.parser.getMimeType(file.name);
+		const mimeType = this.parser.getMimeType(filename);
 
 		for (let attempt = 1; attempt <= maxRetries; attempt++) {
 			try {
 				return await this.api.uploadFile(
 					courseId,
-					file.name,
+					filename,
 					fileData,
 					mimeType,
 					folder.id
@@ -350,7 +442,7 @@ export class MediaUploader {
 			}
 		}
 
-		throw new Error(`Failed to upload ${file.name} after ${maxRetries} attempts`);
+		throw new Error(`Failed to upload ${filename} after ${maxRetries} attempts`);
 	}
 
 	/**
@@ -391,8 +483,6 @@ export class MediaUploader {
 
 	/**
 	 * Generate HTML for an audio file
-	 * Note: Canvas may sanitize the controls attribute in some contexts,
-	 * so we include a download link as fallback
 	 */
 	private generateAudioHtml(previewUrl: string, downloadUrl: string, altText: string): string {
 		return `<div class="cs-audio-container" style="margin: 16px 0;">
@@ -400,9 +490,6 @@ export class MediaUploader {
 <source src="${previewUrl}" type="audio/mpeg">
 Your browser does not support the audio element.
 </audio>
-<div style="margin-top: 8px;">
-<a href="${downloadUrl}" class="cs-link" style="font-size: 0.9em;">Download: ${this.escapeHtml(altText)}</a>
-</div>
 </div>`;
 	}
 
@@ -410,11 +497,10 @@ Your browser does not support the audio element.
 	 * Generate HTML for a video file
 	 */
 	private generateVideoHtml(previewUrl: string, downloadUrl: string, altText: string): string {
-		return `<div class="cs-video-container" style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%; margin: 16px 0;">
-<video controls preload="metadata" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+		return `<div class="cs-video-container" style="margin: 16px 0;">
+<video controls preload="metadata" style="width: 100%; max-width: 800px;">
 <source src="${previewUrl}">
 Your browser does not support the video element.
-<a href="${downloadUrl}">Download ${this.escapeHtml(altText)}</a>
 </video>
 </div>`;
 	}

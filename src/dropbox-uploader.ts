@@ -250,6 +250,11 @@ export class DropboxUploader {
 			return null;
 		}
 
+		// Handle external files (ext:// embeds)
+		if (embed.isExternal && embed.externalPath) {
+			return this.processExternalEmbed(embed, baseFolderPath, mediaType, progressCallback);
+		}
+
 		// Resolve the file in the vault
 		const file = this.parser.resolveMediaFile(embed, sourcePath);
 		if (!file) {
@@ -330,6 +335,105 @@ export class DropboxUploader {
 	}
 
 	/**
+	 * Process an external file embed (ext:// syntax)
+	 */
+	private async processExternalEmbed(
+		embed: MediaEmbed,
+		baseFolderPath: string,
+		mediaType: MediaType,
+		progressCallback?: (message: string) => void
+	): Promise<MediaReplacement | null> {
+		const externalPath = embed.externalPath!;
+
+		// Normalize path (handle Windows backslashes)
+		const normalizedPath = externalPath.replace(/\\/g, '/');
+
+		// Check if file exists
+		const exists = await this.parser.externalFileExists(normalizedPath);
+		if (!exists) {
+			this.log(`External file not found: ${normalizedPath}`);
+			return null;
+		}
+
+		// Get file stats for size check
+		const stats = await this.parser.getExternalFileStats(normalizedPath);
+		if (!stats) {
+			this.log(`Could not get stats for external file: ${normalizedPath}`);
+			return null;
+		}
+
+		// Check file size (if limit is enforced)
+		if (this.settings.enforceMaxFileSize && !this.parser.isWithinSizeLimit(stats.size, this.settings.maxFileSize)) {
+			this.log(`External file too large: ${embed.filename} (${stats.size} bytes)`);
+			return null;
+		}
+
+		// Read file data
+		const fileData = await this.parser.readExternalFile(normalizedPath);
+		const contentHash = await this.parser.computeFileHash(fileData);
+
+		// Check cache (use ext: prefix to avoid collisions with vault paths)
+		const cacheKey = this.getCacheKey(baseFolderPath, `ext:${normalizedPath}`);
+		const cached = this.cache[cacheKey];
+
+		if (cached && cached.contentHash === contentHash) {
+			// Cache hit - file hasn't changed
+			this.log(`Cache hit for external file ${embed.filename}`);
+			const html = this.generateEmbedHtml(
+				cached.directUrl,
+				cached.sharedUrl,
+				embed.filename,
+				mediaType,
+				embed.altText
+			);
+			return { original: embed.raw, replacement: html };
+		}
+
+		// Upload the file
+		progressCallback?.(`Uploading external file ${embed.filename} to Dropbox...`);
+		this.log(`Uploading external file ${embed.filename} to Dropbox`);
+
+		// Determine target path
+		const subfolder = this.getSubfolderForType(mediaType);
+		const targetPath = `${baseFolderPath}/${subfolder}/${embed.filename}`;
+
+		// Ensure subfolder exists
+		await this.ensureFolder(`${baseFolderPath}/${subfolder}`);
+
+		// Upload file
+		const metadata = await this.api.uploadFile(targetPath, fileData, 'overwrite');
+
+		// Create shared link
+		const sharedUrl = await this.api.createSharedLink(metadata.path_display);
+
+		// Transform URLs
+		const { DropboxApi } = await import('./dropbox-api');
+		const directUrl = DropboxApi.transformToDirectUrl(sharedUrl);
+		const downloadUrl = DropboxApi.transformToDownloadUrl(sharedUrl);
+
+		// Update cache
+		this.cache[cacheKey] = {
+			dropboxFileId: metadata.id,
+			sharedUrl,
+			directUrl,
+			contentHash,
+			uploadedAt: Date.now(),
+			vaultPath: `ext:${normalizedPath}`,
+		};
+
+		// Generate HTML replacement
+		const html = this.generateEmbedHtml(
+			directUrl,
+			downloadUrl,
+			embed.filename,
+			mediaType,
+			embed.altText
+		);
+
+		return { original: embed.raw, replacement: html };
+	}
+
+	/**
 	 * Generate embed HTML for Dropbox-hosted media
 	 */
 	private generateEmbedHtml(
@@ -378,9 +482,6 @@ export class DropboxUploader {
 <source src="${directUrl}" type="${mimeType}" />
 Your browser does not support the audio element.
 </audio>
-<div style="margin-top: 8px;">
-<a href="${downloadUrl}" class="cs-link" style="font-size: 0.9em;">Download: ${this.escapeHtml(altText)}</a>
-</div>
 </div>`;
 	}
 
@@ -398,9 +499,6 @@ Your browser does not support the audio element.
 <source src="${directUrl}" type="${mimeType}" />
 Your browser does not support the video element.
 </video>
-<div style="margin-top: 8px;">
-<a href="${downloadUrl}" class="cs-link" style="font-size: 0.9em;">Download: ${this.escapeHtml(altText)}</a>
-</div>
 </div>`;
 	}
 

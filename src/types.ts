@@ -325,6 +325,10 @@ export interface MediaEmbed {
 	vaultPath?: string;
 	/** Media type determined from extension */
 	mediaType?: MediaType;
+	/** Absolute filesystem path for external files */
+	externalPath?: string;
+	/** True if this is an ext:// external file embed */
+	isExternal?: boolean;
 }
 
 /**

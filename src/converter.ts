@@ -365,19 +365,17 @@ export class MarkdownConverter {
 
 /* Video embeds */
 .cs-video-container {
-  position: relative;
-  padding-bottom: 56.25%;
-  height: 0;
-  overflow: hidden;
-  max-width: 100%;
-  margin: 20px 0;
+  margin: 16px 0;
+}
+.cs-video-container video {
+  width: 100%;
+  max-width: 800px;
+  display: block;
 }
 .cs-video-iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
   width: 100%;
-  height: 100%;
+  max-width: 800px;
+  height: 450px;
   border: none;
   border-radius: 8px;
 }
