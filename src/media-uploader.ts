@@ -466,7 +466,7 @@ export class MediaUploader {
 			case 'image':
 				return this.generateImageHtml(previewUrl, altText);
 			case 'audio':
-				return this.generateAudioHtml(previewUrl, downloadUrl, altText);
+				return this.generateAudioHtml(previewUrl);
 			case 'video':
 				return this.generateVideoHtml(previewUrl, downloadUrl, altText);
 			case 'pdf':
@@ -487,13 +487,11 @@ export class MediaUploader {
 	/**
 	 * Generate HTML for an audio file
 	 */
-	private generateAudioHtml(previewUrl: string, downloadUrl: string, altText: string): string {
-		return `<div class="cs-audio-container" style="margin: 16px 0;">
-<audio controls preload="metadata" style="width: 100%; max-width: 500px;">
+	private generateAudioHtml(previewUrl: string): string {
+		return `<audio controls preload="metadata" style="width: 100%; max-width: 600px; display: block; margin: 16px 0;">
 <source src="${previewUrl}" type="audio/mpeg">
 Your browser does not support the audio element.
-</audio>
-</div>`;
+</audio>`;
 	}
 
 	/**

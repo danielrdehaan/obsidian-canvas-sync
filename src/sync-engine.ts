@@ -603,6 +603,17 @@ export class SyncEngine {
 	}
 
 	/**
+	 * Structured progress callback for progress notice updates
+	 */
+	public onItemProgress?: (info: {
+		current: number;
+		total: number;
+		phase: string;
+		itemTitle?: string;
+		action?: string;
+	}) => void;
+
+	/**
 	 * Sync an entire course to Canvas
 	 */
 	async syncCourse(
@@ -650,6 +661,10 @@ export class SyncEngine {
 
 				progressCallback?.(`Syncing to ${canvasCourse.name} (ID: ${courseId})...`);
 
+				// Calculate total for progress tracking
+				const totals = await this.calculateSyncTotals(course);
+				let currentProgress = 0;
+
 				// Sync shared content FIRST to get actual Canvas URLs for wiki-link resolution
 				if (sharedContentFiles.length > 0) {
 					progressCallback?.(`  Shared Content (${sharedContentFiles.length} files)...`);
@@ -695,6 +710,16 @@ export class SyncEngine {
 						}
 
 						progressCallback?.(`    ${result.action}: ${result.title}`);
+
+						// Emit structured progress
+						currentProgress++;
+						this.onItemProgress?.({
+							current: currentProgress,
+							total: totals.totalCount,
+							phase: 'Shared Content',
+							itemTitle: result.title,
+							action: result.action,
+						});
 					}
 				}
 
@@ -883,6 +908,16 @@ export class SyncEngine {
 
 						itemPosition++;
 						progressCallback?.(`    ${result.action}: ${result.title}`);
+
+						// Emit structured progress for module items
+						currentProgress++;
+						this.onItemProgress?.({
+							current: currentProgress,
+							total: totals.totalCount,
+							phase: `Module: ${module.name}`,
+							itemTitle: result.title,
+							action: result.action,
+						});
 					}
 				}
 
@@ -968,6 +1003,44 @@ export class SyncEngine {
 		}
 
 		return results;
+	}
+
+	/**
+	 * Calculate total items to sync for progress tracking
+	 * Pre-calculates counts before sync starts for accurate progress display
+	 */
+	async calculateSyncTotals(course: CourseConfig): Promise<{
+		sharedContentCount: number;
+		moduleItemCount: number;
+		totalCount: number;
+	}> {
+		// Get shared content files that will be synced
+		const sharedContentFiles = await this.linkParser.getSharedContentToSync(course.path);
+		const sharedContentCount = sharedContentFiles.length;
+
+		// Discover modules and count their items
+		const modules = await this.discoverModules(course.path);
+		let moduleItemCount = 0;
+
+		// Track shared content paths to avoid double-counting
+		const sharedPaths = new Set(sharedContentFiles.map(f => f.path));
+
+		for (const module of modules) {
+			for (const item of module.items) {
+				// Don't count items that are also shared content (they're counted once in sharedContentCount)
+				if (!sharedPaths.has(item.filePath)) {
+					moduleItemCount++;
+				}
+			}
+		}
+
+		const totals = {
+			sharedContentCount,
+			moduleItemCount,
+			totalCount: sharedContentCount + moduleItemCount,
+		};
+		console.log('[Sync Engine] calculateSyncTotals:', totals);
+		return totals;
 	}
 
 	/**

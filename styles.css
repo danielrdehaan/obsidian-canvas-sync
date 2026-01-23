@@ -188,3 +188,57 @@
 .folder-picker-name {
 	flex: 1;
 }
+
+/* Progress Notice */
+.canvas-sync-progress-notice {
+	min-width: 280px;
+	padding: 12px 16px;
+}
+
+.cs-progress-phase {
+	font-weight: 600;
+	margin-bottom: 4px;
+	color: var(--text-normal);
+}
+
+.cs-progress-text {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+.cs-progress-bar-container {
+	height: 6px;
+	background: var(--background-modifier-border);
+	border-radius: 3px;
+	overflow: hidden;
+	margin-bottom: 6px;
+}
+
+.cs-progress-bar {
+	height: 100%;
+	background: var(--interactive-accent);
+	transition: width 0.2s ease;
+	border-radius: 3px;
+}
+
+.cs-progress-item {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.canvas-sync-progress-complete,
+.canvas-sync-progress-error {
+	min-width: 280px;
+}
+
+.cs-progress-complete {
+	color: var(--text-normal);
+}
+
+.cs-progress-error {
+	color: var(--text-error);
+}

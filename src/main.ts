@@ -24,6 +24,7 @@ import { MediaUploader, DEFAULT_MEDIA_SETTINGS } from './media-uploader';
 import { DropboxApi } from './dropbox-api';
 import { DropboxUploader } from './dropbox-uploader';
 import type { CourseConfig, SyncResult, MediaUploadCache, DropboxUploadCache, DropboxAuth } from './types';
+import { ProgressNotice } from './progress-notice';
 
 export default class CanvasSyncPlugin extends Plugin {
 	settings: CanvasSyncSettings;
@@ -499,14 +500,39 @@ export default class CanvasSyncPlugin extends Plugin {
 
 		this.startSync();
 		this.updateStatusBar(`Syncing ${course.name}...`);
-		new Notice(`Starting sync for ${course.name}...`);
+
+		// Create progress notice
+		const progressNotice = new ProgressNotice();
 
 		try {
+			// Calculate totals for progress tracking
+			const totals = await this.syncEngine.calculateSyncTotals(course);
+
+			// Show progress notice with initial state
+			progressNotice.show({
+				current: 0,
+				total: totals.totalCount,
+				phase: `Syncing ${course.name}...`,
+			});
+
+			// Set up structured progress callback
+			this.syncEngine.onItemProgress = (info) => {
+				progressNotice.update({
+					current: info.current,
+					total: info.total,
+					phase: info.phase,
+					currentItem: info.itemTitle ? `${info.action}: ${info.itemTitle}` : undefined,
+				});
+			};
+
 			const results = await this.syncEngine.syncCourse(course, (message) => {
 				if (this.settings.debugMode) {
 					console.log(message);
 				}
 			});
+
+			// Clear progress callback
+			this.syncEngine.onItemProgress = undefined;
 
 			let totalSuccess = 0;
 			let totalFailed = 0;
@@ -516,12 +542,9 @@ export default class CanvasSyncPlugin extends Plugin {
 				totalFailed += result.failed;
 			}
 
-			new Notice(
-				`${course.name} sync complete: ${totalSuccess} succeeded, ${totalFailed} failed`,
-				5000
-			);
+			progressNotice.complete(totalSuccess, totalFailed);
 		} catch (error) {
-			new Notice(`Sync failed: ${error}`);
+			progressNotice.error(`Sync failed: ${error}`);
 			console.error('Sync error:', error);
 		} finally {
 			this.endSync();
@@ -543,14 +566,44 @@ export default class CanvasSyncPlugin extends Plugin {
 
 		this.startSync();
 		this.updateStatusBar('Syncing all...');
-		new Notice(`Starting sync for ${enabledCourses.length} course(s)...`);
+
+		// Create progress notice
+		const progressNotice = new ProgressNotice();
+
+		// Calculate totals across all courses
+		let grandTotal = 0;
+		const courseTotals: { course: CourseConfig; total: number }[] = [];
+
+		for (const course of enabledCourses) {
+			const totals = await this.syncEngine.calculateSyncTotals(course);
+			grandTotal += totals.totalCount;
+			courseTotals.push({ course, total: totals.totalCount });
+		}
+
+		// Show progress notice
+		progressNotice.show({
+			current: 0,
+			total: grandTotal,
+			phase: `Syncing ${enabledCourses.length} course(s)...`,
+		});
 
 		let totalSuccess = 0;
 		let totalFailed = 0;
+		let globalProgress = 0;
 
 		for (let i = 0; i < enabledCourses.length; i++) {
 			const course = enabledCourses[i];
 			this.updateStatusBar(`Syncing ${course.name} (${i + 1}/${enabledCourses.length})...`);
+
+			// Set up structured progress callback for this course
+			this.syncEngine.onItemProgress = (info) => {
+				progressNotice.update({
+					current: globalProgress + info.current,
+					total: grandTotal,
+					phase: `${course.name}: ${info.phase}`,
+					currentItem: info.itemTitle ? `${info.action}: ${info.itemTitle}` : undefined,
+				});
+			};
 
 			try {
 				const results = await this.syncEngine.syncCourse(course);
@@ -559,16 +612,21 @@ export default class CanvasSyncPlugin extends Plugin {
 					totalSuccess += result.success;
 					totalFailed += result.failed;
 				}
+
+				// Update global progress after this course completes
+				globalProgress += courseTotals[i].total;
 			} catch (error) {
 				totalFailed++;
 				console.error(`Error syncing ${course.name}:`, error);
+				// Still advance progress on error
+				globalProgress += courseTotals[i].total;
 			}
 		}
 
-		new Notice(
-			`All courses synced: ${totalSuccess} succeeded, ${totalFailed} failed`,
-			5000
-		);
+		// Clear progress callback
+		this.syncEngine.onItemProgress = undefined;
+
+		progressNotice.complete(totalSuccess, totalFailed);
 
 		this.endSync();
 	}

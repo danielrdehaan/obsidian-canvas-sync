@@ -477,7 +477,7 @@ export class DropboxUploader {
 			case 'image':
 				return this.generateImageHtml(directUrl, displayName);
 			case 'audio':
-				return this.generateAudioHtml(directUrl, downloadUrl, displayName, mimeType);
+				return this.generateAudioHtml(directUrl, mimeType);
 			case 'video':
 				return this.generateVideoHtml(directUrl, downloadUrl, displayName, mimeType);
 			case 'pdf':
@@ -498,18 +498,11 @@ export class DropboxUploader {
 	/**
 	 * Generate HTML for an audio file
 	 */
-	private generateAudioHtml(
-		directUrl: string,
-		downloadUrl: string,
-		altText: string,
-		mimeType: string
-	): string {
-		return `<div class="cs-audio-container" style="margin: 16px 0;">
-<audio style="width: 100%; max-width: 500px;" controls preload="metadata">
+	private generateAudioHtml(directUrl: string, mimeType: string): string {
+		return `<audio controls preload="metadata" style="width: 100%; max-width: 600px; display: block; margin: 16px 0;">
 <source src="${directUrl}" type="${mimeType}" />
 Your browser does not support the audio element.
-</audio>
-</div>`;
+</audio>`;
 	}
 
 	/**

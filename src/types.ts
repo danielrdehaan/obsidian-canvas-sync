@@ -537,3 +537,4 @@ export interface DropboxSharedLinkMetadata {
 	name: string;
 	path_lower: string;
 }
+
