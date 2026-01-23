@@ -1,6 +1,7 @@
 import { Marked } from 'marked';
 import type { StyleSettings, ContentTheme } from './types';
 import type { MediaReplacement } from './media-uploader';
+import { escapeHtml } from './html-utils';
 
 /**
  * Options for converting markdown to HTML
@@ -166,7 +167,7 @@ export class MarkdownConverter {
 			return `<div class="cs-video-container">
 <iframe
 	src="https://www.youtube.com/embed/${videoId}"
-	title="${title}"
+	title="${escapeHtml(title)}"
 	class="cs-video-iframe"
 	allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
 	allowfullscreen>
@@ -203,8 +204,8 @@ export class MarkdownConverter {
 			// Apply content classes to the parsed HTML
 			processedBody = this.applyContentClasses(processedBody);
 
-			return `<div class="cs-callout cs-callout-${calloutType}">
-<p class="cs-callout-title"><span class="cs-callout-icon">${calloutIcon}</span><b>${calloutTitle}</b></p>
+			return `<div class="cs-callout cs-callout-${escapeHtml(calloutType)}">
+<p class="cs-callout-title"><span class="cs-callout-icon">${calloutIcon}</span><b>${escapeHtml(calloutTitle)}</b></p>
 <div class="cs-callout-body">${processedBody}</div>
 </div>
 
@@ -266,19 +267,19 @@ export class MarkdownConverter {
 			const slug = options.pageSlugMap.get(filename);
 			if (slug) {
 				console.log(`[Converter] Found page slug: "${slug}"`);
-				return `<a href="/courses/${options.courseId}/pages/${slug}" class="cs-link">${displayText}</a>`;
+				return `<a href="/courses/${options.courseId}/pages/${slug}" class="cs-link">${escapeHtml(displayText)}</a>`;
 			}
 
 			// Check if it's a discussion - create an actual link
 			const discussionId = options.discussionTitleMap.get(filename);
 			if (discussionId) {
 				console.log(`[Converter] Found discussion ID: ${discussionId}`);
-				return `<a href="/courses/${options.courseId}/discussion_topics/${discussionId}" class="cs-link">${displayText}</a>`;
+				return `<a href="/courses/${options.courseId}/discussion_topics/${discussionId}" class="cs-link">${escapeHtml(displayText)}</a>`;
 			}
 
 			// Unknown link - return as styled text with visual indicator
 			console.log(`[Converter] Unknown link, returning plain text`);
-			return `<em>${displayText}</em>`;
+			return `<em>${escapeHtml(displayText)}</em>`;
 		});
 	}
 

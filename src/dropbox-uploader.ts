@@ -9,6 +9,7 @@ import type {
 	DropboxCacheEntry,
 	DropboxUploadCache,
 } from './types';
+import { escapeHtml } from './html-utils';
 
 /**
  * Dropbox uploader - orchestrates media file uploads to Dropbox
@@ -484,7 +485,7 @@ export class DropboxUploader {
 				return this.generatePdfHtml(directUrl, downloadUrl, displayName);
 			default:
 				// Generic file link
-				return `<a href="${downloadUrl}" class="cs-link">${this.escapeHtml(displayName)}</a>`;
+				return `<a href="${downloadUrl}" class="cs-link">${escapeHtml(displayName)}</a>`;
 		}
 	}
 
@@ -492,7 +493,7 @@ export class DropboxUploader {
 	 * Generate HTML for an image
 	 */
 	private generateImageHtml(directUrl: string, altText: string): string {
-		return `<p style="margin: 16px 0;"><img src="${directUrl}" alt="${this.escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto; display: block;"></p>`;
+		return `<p style="margin: 16px 0;"><img src="${directUrl}" alt="${escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto; display: block;"></p>`;
 	}
 
 	/**
@@ -527,23 +528,11 @@ Your browser does not support the video element.
 	 */
 	private generatePdfHtml(directUrl: string, downloadUrl: string, altText: string): string {
 		return `<div class="cs-pdf-container" style="margin: 16px 0;">
-<iframe src="${directUrl}" style="width: 100%; height: 600px; border: 1px solid #e2e8f0; border-radius: 4px;" title="${this.escapeHtml(altText)}"></iframe>
+<iframe src="${directUrl}" style="width: 100%; height: 600px; border: 1px solid #e2e8f0; border-radius: 4px;" title="${escapeHtml(altText)}"></iframe>
 <div style="margin-top: 8px;">
-<a href="${downloadUrl}" class="cs-link" style="font-size: 0.9em;">Download PDF: ${this.escapeHtml(altText)}</a>
+<a href="${downloadUrl}" class="cs-link" style="font-size: 0.9em;">Download PDF: ${escapeHtml(altText)}</a>
 </div>
 </div>`;
-	}
-
-	/**
-	 * Escape HTML special characters
-	 */
-	private escapeHtml(text: string): string {
-		return text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#039;');
 	}
 
 	/**
@@ -632,7 +621,7 @@ Your browser does not support the video element.
 			if (!normalizedPath.startsWith(normalizedDropboxPath)) {
 				this.log(`Path not in Dropbox folder (${normalizedDropboxPath}), skipping: ${normalizedPath}`);
 				// Return a file:// link as fallback
-				const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link">${this.escapeHtml(displayText)}</a>`;
+				const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link">${escapeHtml(displayText)}</a>`;
 				replacements.push({ original: fullMatch, replacement: fallbackHtml });
 				continue;
 			}
@@ -657,7 +646,7 @@ Your browser does not support the video element.
 					this.log(`This may indicate: (1) files haven't synced to Dropbox servers yet, (2) path structure differs from local, or (3) different Dropbox account`);
 
 					// Provide helpful fallback with diagnostic info
-					const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link cs-file-not-synced" style="color: #dd6b20;">${this.escapeHtml(displayText)} (not synced to Dropbox)</a>`;
+					const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link cs-file-not-synced" style="color: #dd6b20;">${escapeHtml(displayText)} (not synced to Dropbox)</a>`;
 					replacements.push({ original: fullMatch, replacement: fallbackHtml });
 					continue;
 				}
@@ -670,7 +659,7 @@ Your browser does not support the video element.
 				const downloadUrl = DropboxApi.transformToDownloadUrl(sharedUrl);
 
 				// Generate HTML link
-				const html = `<a href="${downloadUrl}" class="cs-link">${this.escapeHtml(displayText)}</a>`;
+				const html = `<a href="${downloadUrl}" class="cs-link">${escapeHtml(displayText)}</a>`;
 
 				replacements.push({ original: fullMatch, replacement: html });
 				this.log(`Created Dropbox link for: ${displayText}`);
@@ -679,7 +668,7 @@ Your browser does not support the video element.
 				this.log(`Failed to create Dropbox link for ${dropboxApiPath}: ${errorMsg}`);
 
 				// Fallback to file:// link
-				const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link cs-file-error" style="color: #e53e3e;">${this.escapeHtml(displayText)} (Dropbox error)</a>`;
+				const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link cs-file-error" style="color: #e53e3e;">${escapeHtml(displayText)} (Dropbox error)</a>`;
 				replacements.push({ original: fullMatch, replacement: fallbackHtml });
 			}
 		}

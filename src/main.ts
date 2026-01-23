@@ -17,7 +17,7 @@ import {
 	DEFAULT_SETTINGS,
 	CanvasSyncSettingTab,
 } from './settings';
-import { CanvasApi } from './canvas-api';
+import { CanvasApi, DEFAULT_RESILIENCE_SETTINGS } from './canvas-api';
 import { SyncEngine } from './sync-engine';
 import { MediaParser } from './media-parser';
 import { MediaUploader, DEFAULT_MEDIA_SETTINGS } from './media-uploader';
@@ -70,6 +70,7 @@ export default class CanvasSyncPlugin extends Plugin {
 			this.settings.canvasApiToken
 		);
 		this.canvasApi.setDebugMode(this.settings.debugMode);
+		this.canvasApi.setResilienceSettings(this.settings.apiResilience);
 
 		// Initialize sync engine
 		this.syncEngine.setSharedContentPaths(this.settings.sharedContentPaths);
@@ -154,6 +155,13 @@ export default class CanvasSyncPlugin extends Plugin {
 			savedData?.media
 		);
 
+		// Deep merge API resilience settings to preserve defaults for missing properties
+		this.settings.apiResilience = Object.assign(
+			{},
+			DEFAULT_RESILIENCE_SETTINGS,
+			savedData?.apiResilience
+		);
+
 		// Load media cache from saved data
 		if (savedData?.mediaCache) {
 			this.mediaCache = savedData.mediaCache;
@@ -200,6 +208,7 @@ export default class CanvasSyncPlugin extends Plugin {
 			this.settings.canvasApiToken
 		);
 		this.canvasApi.setDebugMode(this.settings.debugMode);
+		this.canvasApi.setResilienceSettings(this.settings.apiResilience);
 		this.syncEngine.setSharedContentPaths(this.settings.sharedContentPaths);
 		this.syncEngine.setDebugMode(this.settings.debugMode);
 		this.syncEngine.setStyleSettings(this.settings.style);

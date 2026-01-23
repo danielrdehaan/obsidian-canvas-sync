@@ -10,6 +10,7 @@ import type {
 	CanvasFile,
 	CanvasFolder,
 } from './types';
+import { escapeHtml } from './html-utils';
 
 /**
  * Default media settings
@@ -338,7 +339,7 @@ export class MediaUploader {
 		if (!exists) {
 			this.log(`External file not found: ${normalizedPath}`);
 			// Return a fallback link instead of null so the embed isn't lost
-			const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link cs-file-missing" style="color: #a0aec0; text-decoration: line-through;">${this.escapeHtml(embed.filename)} (file not found)</a>`;
+			const fallbackHtml = `<a href="file://${normalizedPath}" class="cs-link cs-file-missing" style="color: #a0aec0; text-decoration: line-through;">${escapeHtml(embed.filename)} (file not found)</a>`;
 			return { original: embed.raw, replacement: fallbackHtml };
 		}
 
@@ -481,7 +482,7 @@ export class MediaUploader {
 	 * Generate HTML for an image
 	 */
 	private generateImageHtml(previewUrl: string, altText: string): string {
-		return `<p style="margin: 16px 0;"><img src="${previewUrl}" alt="${this.escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto; display: block;"></p>`;
+		return `<p style="margin: 16px 0;"><img src="${previewUrl}" alt="${escapeHtml(altText)}" class="cs-media-image" style="max-width: 100%; height: auto; display: block;"></p>`;
 	}
 
 	/**
@@ -511,23 +512,11 @@ Your browser does not support the video element.
 	 */
 	private generatePdfHtml(previewUrl: string, downloadUrl: string, altText: string): string {
 		return `<div class="cs-pdf-container" style="margin: 16px 0;">
-<iframe src="${previewUrl}" style="width: 100%; height: 600px; border: 1px solid #e2e8f0; border-radius: 4px;" title="${this.escapeHtml(altText)}"></iframe>
+<iframe src="${previewUrl}" style="width: 100%; height: 600px; border: 1px solid #e2e8f0; border-radius: 4px;" title="${escapeHtml(altText)}"></iframe>
 <div style="margin-top: 8px;">
-<a href="${downloadUrl}" class="cs-link" style="font-size: 0.9em;">Download PDF: ${this.escapeHtml(altText)}</a>
+<a href="${downloadUrl}" class="cs-link" style="font-size: 0.9em;">Download PDF: ${escapeHtml(altText)}</a>
 </div>
 </div>`;
-	}
-
-	/**
-	 * Escape HTML special characters
-	 */
-	private escapeHtml(text: string): string {
-		return text
-			.replace(/&/g, '&amp;')
-			.replace(/</g, '&lt;')
-			.replace(/>/g, '&gt;')
-			.replace(/"/g, '&quot;')
-			.replace(/'/g, '&#039;');
 	}
 
 	/**

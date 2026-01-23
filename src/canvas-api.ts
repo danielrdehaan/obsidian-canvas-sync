@@ -13,7 +13,92 @@ import type {
 	CanvasFolder,
 	CanvasFileUploadParams,
 	CanvasFileUploadResponse,
+	CanvasApiErrorType,
+	ApiResilienceSettings,
 } from './types';
+
+/**
+ * Default resilience settings
+ */
+export const DEFAULT_RESILIENCE_SETTINGS: ApiResilienceSettings = {
+	maxRetries: 3,
+	baseDelayMs: 1000,
+	maxDelayMs: 30000,
+	timeoutMs: 30000,
+};
+
+/**
+ * Custom error class for Canvas API errors with retry metadata
+ */
+export class CanvasApiError extends Error {
+	readonly type: CanvasApiErrorType;
+	readonly statusCode?: number;
+	readonly retryable: boolean;
+	readonly retryAfter?: number;
+
+	constructor(
+		message: string,
+		type: CanvasApiErrorType,
+		statusCode?: number,
+		retryAfter?: number
+	) {
+		super(message);
+		this.name = 'CanvasApiError';
+		this.type = type;
+		this.statusCode = statusCode;
+		this.retryAfter = retryAfter;
+
+		// Determine if this error is retryable
+		this.retryable = type === 'network' || type === 'rate_limited' || type === 'server_error' || type === 'timeout';
+	}
+
+	/**
+	 * Create a CanvasApiError from an HTTP response status
+	 */
+	static fromResponse(status: number, message: string, retryAfterHeader?: string): CanvasApiError {
+		let type: CanvasApiErrorType;
+		let retryAfter: number | undefined;
+
+		if (status === 401) {
+			type = 'auth';
+		} else if (status === 403) {
+			type = 'forbidden';
+		} else if (status === 404) {
+			type = 'not_found';
+		} else if (status === 429) {
+			type = 'rate_limited';
+			// Parse Retry-After header if present (in seconds)
+			if (retryAfterHeader) {
+				const parsed = parseInt(retryAfterHeader, 10);
+				if (!isNaN(parsed)) {
+					retryAfter = parsed * 1000; // Convert to milliseconds
+				}
+			}
+		} else if (status >= 400 && status < 500) {
+			type = 'client_error';
+		} else if (status >= 500) {
+			type = 'server_error';
+		} else {
+			type = 'unknown';
+		}
+
+		return new CanvasApiError(message, type, status, retryAfter);
+	}
+
+	/**
+	 * Create a CanvasApiError from a network/fetch error
+	 */
+	static fromNetworkError(error: unknown): CanvasApiError {
+		const message = error instanceof Error ? error.message : String(error);
+
+		// Check if it's a timeout
+		if (message.toLowerCase().includes('timeout') || message.toLowerCase().includes('aborted')) {
+			return new CanvasApiError(`Request timed out: ${message}`, 'timeout');
+		}
+
+		return new CanvasApiError(`Network error: ${message}`, 'network');
+	}
+}
 
 /**
  * Canvas LMS API client
@@ -22,11 +107,13 @@ export class CanvasApi {
 	private apiUrl: string;
 	private apiToken: string;
 	private debugMode: boolean;
+	private resilienceSettings: ApiResilienceSettings;
 
 	constructor(apiUrl: string, apiToken: string, debugMode = false) {
 		this.apiUrl = apiUrl.replace(/\/$/, '');
 		this.apiToken = apiToken;
 		this.debugMode = debugMode;
+		this.resilienceSettings = { ...DEFAULT_RESILIENCE_SETTINGS };
 	}
 
 	/**
@@ -45,6 +132,20 @@ export class CanvasApi {
 	}
 
 	/**
+	 * Update resilience settings
+	 */
+	setResilienceSettings(settings: Partial<ApiResilienceSettings>): void {
+		this.resilienceSettings = { ...this.resilienceSettings, ...settings };
+	}
+
+	/**
+	 * Get current resilience settings
+	 */
+	getResilienceSettings(): ApiResilienceSettings {
+		return { ...this.resilienceSettings };
+	}
+
+	/**
 	 * Log debug messages
 	 */
 	private log(...args: unknown[]): void {
@@ -54,7 +155,7 @@ export class CanvasApi {
 	}
 
 	/**
-	 * Make an API request
+	 * Make an API request with retry logic and timeout
 	 */
 	private async request<T>(
 		method: string,
@@ -62,30 +163,95 @@ export class CanvasApi {
 		data?: Record<string, unknown>
 	): Promise<T> {
 		const url = `${this.apiUrl}/api/v1${endpoint}`;
+		const { maxRetries, baseDelayMs, maxDelayMs, timeoutMs } = this.resilienceSettings;
 
-		const params: RequestUrlParam = {
-			url,
-			method,
-			headers: {
-				Authorization: `Bearer ${this.apiToken}`,
-				'Content-Type': 'application/json',
-			},
-		};
+		let lastError: CanvasApiError | Error | null = null;
 
-		if (data && (method === 'POST' || method === 'PUT')) {
-			params.body = JSON.stringify(data);
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			const params: RequestUrlParam = {
+				url,
+				method,
+				headers: {
+					Authorization: `Bearer ${this.apiToken}`,
+					'Content-Type': 'application/json',
+				},
+			};
+
+			if (data && (method === 'POST' || method === 'PUT')) {
+				params.body = JSON.stringify(data);
+			}
+
+			this.log(`${method} ${endpoint} (attempt ${attempt + 1}/${maxRetries + 1})`, data);
+
+			try {
+				// Create timeout promise
+				const timeoutPromise = new Promise<never>((_, reject) => {
+					setTimeout(() => {
+						reject(new CanvasApiError(`Request timed out after ${timeoutMs}ms`, 'timeout'));
+					}, timeoutMs);
+				});
+
+				// Race between request and timeout
+				const response = await Promise.race([
+					requestUrl(params),
+					timeoutPromise,
+				]);
+
+				this.log('Response:', response.status, response.json);
+
+				// Check for error status codes
+				if (response.status >= 400) {
+					const retryAfterHeader = response.headers?.['retry-after'] || response.headers?.['Retry-After'];
+					throw CanvasApiError.fromResponse(
+						response.status,
+						`HTTP ${response.status}: ${JSON.stringify(response.json)}`,
+						retryAfterHeader
+					);
+				}
+
+				return response.json as T;
+			} catch (error) {
+				// Convert to CanvasApiError if needed
+				if (!(error instanceof CanvasApiError)) {
+					lastError = CanvasApiError.fromNetworkError(error);
+				} else {
+					lastError = error;
+				}
+
+				this.log(`Error (attempt ${attempt + 1}):`, lastError.message, `retryable: ${(lastError as CanvasApiError).retryable}`);
+
+				// Check if we should retry
+				const canvasError = lastError as CanvasApiError;
+				if (!canvasError.retryable || attempt >= maxRetries) {
+					throw lastError;
+				}
+
+				// Calculate delay with exponential backoff and jitter
+				let delay: number;
+				if (canvasError.retryAfter) {
+					// Use Retry-After header if provided
+					delay = canvasError.retryAfter;
+				} else {
+					// Exponential backoff: baseDelay * 2^attempt + jitter
+					const exponentialDelay = baseDelayMs * Math.pow(2, attempt);
+					const jitter = Math.random() * baseDelayMs * 0.5;
+					delay = Math.min(exponentialDelay + jitter, maxDelayMs);
+				}
+
+				this.log(`Retrying in ${Math.round(delay)}ms...`);
+				await this.sleep(delay);
+			}
 		}
 
-		this.log(`${method} ${endpoint}`, data);
+		// Should not reach here, but just in case
+		throw lastError || new CanvasApiError('Request failed', 'unknown');
+	}
 
-		try {
-			const response = await requestUrl(params);
-			this.log('Response:', response.status, response.json);
-			return response.json as T;
-		} catch (error) {
-			this.log('Error:', error);
-			throw error;
-		}
+	/**
+	 * Sleep for a specified duration
+	 */
+	private sleep(ms: number): Promise<void> {
+		return new Promise((resolve) => setTimeout(resolve, ms));
 	}
 
 	/**
@@ -118,12 +284,17 @@ export class CanvasApi {
 
 	/**
 	 * Get a specific page by URL slug
+	 * Returns null for 404 (page not found), throws for other errors
 	 */
 	async getPage(courseId: number, urlSlug: string): Promise<CanvasPage | null> {
 		try {
 			return await this.request<CanvasPage>('GET', `/courses/${courseId}/pages/${urlSlug}`);
-		} catch {
-			return null;
+		} catch (error) {
+			// Only return null for 404 (not found) - all other errors should propagate
+			if (error instanceof CanvasApiError && error.type === 'not_found') {
+				return null;
+			}
+			throw error;
 		}
 	}
 
@@ -771,6 +942,7 @@ export class CanvasApi {
 
 	/**
 	 * Get a folder by path
+	 * Returns null for 404 (folder not found), throws for other errors
 	 */
 	async getFolderByPath(courseId: number, folderPath: string): Promise<CanvasFolder | null> {
 		try {
@@ -780,8 +952,12 @@ export class CanvasApi {
 				'GET',
 				`/courses/${courseId}/folders/by_path/${encodedPath}`
 			);
-		} catch {
-			return null;
+		} catch (error) {
+			// Only return null for 404 (not found) - all other errors should propagate
+			if (error instanceof CanvasApiError && error.type === 'not_found') {
+				return null;
+			}
+			throw error;
 		}
 	}
 

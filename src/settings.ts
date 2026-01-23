@@ -1,7 +1,8 @@
 import { App, PluginSettingTab, Setting, TextComponent, Notice, TFolder, Modal } from 'obsidian';
 import type CanvasSyncPlugin from './main';
-import type { CourseConfig, StyleSettings, MediaSettings, DropboxAuth, DropboxUploadCache, DropboxEntry } from './types';
+import type { CourseConfig, StyleSettings, MediaSettings, DropboxAuth, DropboxUploadCache, DropboxEntry, ApiResilienceSettings } from './types';
 import { DEFAULT_MEDIA_SETTINGS } from './media-uploader';
+import { DEFAULT_RESILIENCE_SETTINGS } from './canvas-api';
 
 /**
  * Plugin settings interface
@@ -20,6 +21,8 @@ export interface CanvasSyncSettings {
 	style: StyleSettings;
 	/** Media upload settings */
 	media: MediaSettings;
+	/** API resilience settings (retry, timeout) */
+	apiResilience: ApiResilienceSettings;
 	/** Dropbox App Key (from Dropbox developer console) */
 	dropboxAppKey?: string;
 	/** Dropbox authentication tokens */
@@ -46,6 +49,7 @@ export const DEFAULT_SETTINGS: CanvasSyncSettings = {
 		mobileCompatible: false,
 	},
 	media: DEFAULT_MEDIA_SETTINGS,
+	apiResilience: DEFAULT_RESILIENCE_SETTINGS,
 	dropboxAppKey: '',
 	dropboxAuth: undefined,
 };
@@ -436,6 +440,41 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 
 		// Hide size input if limit not enforced
 		maxFileSizeSetting.settingEl.style.display = this.plugin.settings.media.enforceMaxFileSize ? '' : 'none';
+
+		// Advanced Settings
+		containerEl.createEl('h2', { text: 'Advanced Settings' });
+		containerEl.createEl('p', {
+			text: 'Configure API request behavior including timeouts and retry logic.',
+			cls: 'setting-item-description',
+		});
+
+		new Setting(containerEl)
+			.setName('Request Timeout')
+			.setDesc('Maximum time to wait for API responses (in seconds)')
+			.addSlider((slider) =>
+				slider
+					.setLimits(10, 120, 5)
+					.setValue(this.plugin.settings.apiResilience.timeoutMs / 1000)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.apiResilience.timeoutMs = value * 1000;
+						await this.plugin.saveSettings();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName('Max Retries')
+			.setDesc('Number of retry attempts for failed requests (0 = no retries)')
+			.addSlider((slider) =>
+				slider
+					.setLimits(0, 5, 1)
+					.setValue(this.plugin.settings.apiResilience.maxRetries)
+					.setDynamicTooltip()
+					.onChange(async (value) => {
+						this.plugin.settings.apiResilience.maxRetries = value;
+						await this.plugin.saveSettings();
+					})
+			);
 
 		// Support Section
 		containerEl.createEl('h2', { text: 'Support' });

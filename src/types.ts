@@ -4,6 +4,34 @@
 export type CanvasContentType = 'page' | 'discussion' | 'graded_discussion' | 'assignment' | 'external_url' | 'syllabus';
 
 /**
+ * Canvas API error types for categorizing failures
+ */
+export type CanvasApiErrorType =
+	| 'network'
+	| 'auth'
+	| 'forbidden'
+	| 'not_found'
+	| 'rate_limited'
+	| 'client_error'
+	| 'server_error'
+	| 'timeout'
+	| 'unknown';
+
+/**
+ * API resilience settings for retry behavior and timeouts
+ */
+export interface ApiResilienceSettings {
+	/** Maximum number of retry attempts (default: 3) */
+	maxRetries: number;
+	/** Base delay in milliseconds for exponential backoff (default: 1000) */
+	baseDelayMs: number;
+	/** Maximum delay in milliseconds between retries (default: 30000) */
+	maxDelayMs: number;
+	/** Request timeout in milliseconds (default: 30000) */
+	timeoutMs: number;
+}
+
+/**
  * Content theme options for Canvas styling
  */
 export type ContentTheme = 'auto' | 'light' | 'dark';

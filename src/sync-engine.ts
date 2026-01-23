@@ -748,8 +748,16 @@ export class SyncEngine {
 						console.log(`[Sync Engine]   Item: type="${item.type}", content_id=${item.content_id} (${typeof item.content_id}), title="${item.title}"`);
 					}
 					const existingPageUrls = new Set(existingItems.filter(i => i.type === 'Page').map(i => i.page_url));
-					const existingDiscussionIds = new Set(existingItems.filter(i => i.type === 'Discussion').map(i => i.content_id));
-					const existingAssignmentIds = new Set(existingItems.filter(i => i.type === 'Assignment').map(i => i.content_id));
+					const existingDiscussionIds = new Set<number>(
+						existingItems
+							.filter(i => i.type === 'Discussion' && i.content_id !== undefined)
+							.map(i => Number(i.content_id))
+					);
+					const existingAssignmentIds = new Set<number>(
+						existingItems
+							.filter(i => i.type === 'Assignment' && i.content_id !== undefined)
+							.map(i => Number(i.content_id))
+					);
 					const existingExternalUrls = new Set(existingItems.filter(i => i.type === 'ExternalUrl').map(i => i.title));
 					console.log(`[Sync Engine] existingAssignmentIds:`, Array.from(existingAssignmentIds));
 
