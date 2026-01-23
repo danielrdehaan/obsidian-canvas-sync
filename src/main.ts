@@ -416,7 +416,15 @@ export default class CanvasSyncPlugin extends Plugin {
 		}
 
 		this.startSync();
-		new Notice(`Syncing ${files.length} files from ${folder.name}...`);
+		this.updateStatusBar(`Syncing ${folder.name}...`);
+
+		// Create progress notice
+		const progressNotice = new ProgressNotice();
+		progressNotice.show({
+			current: 0,
+			total: files.length,
+			phase: `Syncing ${folder.name}...`,
+		});
 
 		let success = 0;
 		let failed = 0;
@@ -424,6 +432,14 @@ export default class CanvasSyncPlugin extends Plugin {
 		for (let i = 0; i < files.length; i++) {
 			const file = files[i];
 			this.updateStatusBar(`Syncing ${i + 1}/${files.length}...`);
+
+			// Update progress notice
+			progressNotice.update({
+				current: i,
+				total: files.length,
+				phase: `Syncing ${folder.name}...`,
+				currentItem: file.name,
+			});
 
 			try {
 				const results = await this.syncEngine.syncSingleFile(file, [course]);
@@ -439,7 +455,7 @@ export default class CanvasSyncPlugin extends Plugin {
 		}
 
 		this.endSync();
-		new Notice(`Folder sync complete: ${success} succeeded, ${failed} failed`);
+		progressNotice.complete(success, failed);
 	}
 
 	/**
@@ -464,11 +480,20 @@ export default class CanvasSyncPlugin extends Plugin {
 		this.startSync();
 		this.updateStatusBar('Syncing...');
 
+		// Create progress notice
+		const progressNotice = new ProgressNotice();
+		progressNotice.show({
+			current: 0,
+			total: 1,
+			phase: `Syncing ${file.name}...`,
+		});
+
 		try {
 			const enabledCourses = this.settings.courses.filter((c) => c.enabled);
 			const results = await this.syncEngine.syncSingleFile(file, enabledCourses);
 
 			if (results.length === 0) {
+				progressNotice.hide();
 				new Notice(`File ${file.name} is not in a configured course`);
 				return;
 			}
@@ -476,16 +501,9 @@ export default class CanvasSyncPlugin extends Plugin {
 			const successful = results.filter((r) => r.success).length;
 			const failed = results.filter((r) => !r.success).length;
 
-			if (failed > 0) {
-				new Notice(
-					`Sync completed: ${successful} succeeded, ${failed} failed`,
-					5000
-				);
-			} else {
-				new Notice(`Synced ${file.name} to ${results.length} course(s)`);
-			}
+			progressNotice.complete(successful, failed);
 		} catch (error) {
-			new Notice(`Sync failed: ${error}`);
+			progressNotice.error(`Sync failed: ${error}`);
 			console.error('Sync error:', error);
 		} finally {
 			this.endSync();
