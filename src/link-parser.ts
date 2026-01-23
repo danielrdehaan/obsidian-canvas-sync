@@ -25,11 +25,14 @@ export class LinkParser {
 	 */
 	isSharedContent(filePath: string): boolean {
 		if (!this.sharedContentPaths || this.sharedContentPaths.length === 0) {
+			console.log(`[Link Parser] isSharedContent: no paths configured`);
 			return false;
 		}
-		return this.sharedContentPaths.some(
+		const result = this.sharedContentPaths.some(
 			(path) => path && filePath.startsWith(path)
 		);
+		console.log(`[Link Parser] isSharedContent("${filePath}") checking against [${this.sharedContentPaths.join(', ')}] -> ${result}`);
+		return result;
 	}
 
 	/**

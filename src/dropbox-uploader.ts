@@ -70,6 +70,13 @@ export class DropboxUploader {
 	}
 
 	/**
+	 * Get the Dropbox folder path for shared content
+	 */
+	getDropboxSharedFolder(): string {
+		return this.settings.dropboxSharedFolder || '/Canvas Media/Shared Resources';
+	}
+
+	/**
 	 * Log debug messages
 	 */
 	private log(...args: unknown[]): void {
@@ -163,7 +170,9 @@ export class DropboxUploader {
 		content: string,
 		sourcePath: string,
 		baseFolderPath: string,
-		progressCallback?: (message: string) => void
+		progressCallback?: (message: string) => void,
+		sharedFolderPath?: string,
+		isSharedContent?: (path: string) => boolean
 	): Promise<MediaReplacement[]> {
 		this.log('processMediaEmbeds called', {
 			sourcePath,
@@ -214,7 +223,9 @@ export class DropboxUploader {
 					embed,
 					sourcePath,
 					baseFolderPath,
-					progressCallback
+					progressCallback,
+					sharedFolderPath,
+					isSharedContent
 				);
 
 				if (replacement) {
@@ -238,7 +249,9 @@ export class DropboxUploader {
 		embed: MediaEmbed,
 		sourcePath: string,
 		baseFolderPath: string,
-		progressCallback?: (message: string) => void
+		progressCallback?: (message: string) => void,
+		sharedFolderPath?: string,
+		isSharedContent?: (path: string) => boolean
 	): Promise<MediaReplacement | null> {
 		this.log(`Processing embed: ${embed.filename}`);
 		const mediaType = embed.mediaType || this.parser.getMediaType(embed.filename);
@@ -263,6 +276,20 @@ export class DropboxUploader {
 		}
 		this.log(`Resolved file: ${embed.filename} -> ${file.path}`);
 
+		// Determine target folder based on whether media is from shared content
+		let targetFolderPath = baseFolderPath;
+		const hasSharedFolder = !!sharedFolderPath;
+		const hasChecker = !!isSharedContent;
+		const isShared = isSharedContent ? isSharedContent(file.path) : false;
+		this.log(`Shared content routing check: hasSharedFolder=${hasSharedFolder}, hasChecker=${hasChecker}, isShared=${isShared}, filePath="${file.path}"`);
+
+		if (sharedFolderPath && isSharedContent && isShared) {
+			targetFolderPath = sharedFolderPath;
+			this.log(`Media "${file.path}" is shared content, routing to: ${targetFolderPath}`);
+		} else {
+			this.log(`Media "${file.path}" using course folder: ${targetFolderPath}`);
+		}
+
 		// Check file size (if limit is enforced)
 		if (this.settings.enforceMaxFileSize && !this.parser.isWithinSizeLimit(file.stat.size, this.settings.maxFileSize)) {
 			this.log(`File too large: ${embed.filename} (${file.stat.size} bytes)`);
@@ -274,7 +301,7 @@ export class DropboxUploader {
 		const contentHash = await this.parser.computeFileHash(fileData);
 
 		// Check cache
-		const cacheKey = this.getCacheKey(baseFolderPath, file.path);
+		const cacheKey = this.getCacheKey(targetFolderPath, file.path);
 		const cached = this.cache[cacheKey];
 
 		if (cached && cached.contentHash === contentHash) {
@@ -296,10 +323,10 @@ export class DropboxUploader {
 
 		// Determine target path
 		const subfolder = this.getSubfolderForType(mediaType);
-		const targetPath = `${baseFolderPath}/${subfolder}/${file.name}`;
+		const targetPath = `${targetFolderPath}/${subfolder}/${file.name}`;
 
 		// Ensure subfolder exists
-		await this.ensureFolder(`${baseFolderPath}/${subfolder}`);
+		await this.ensureFolder(`${targetFolderPath}/${subfolder}`);
 
 		// Upload file
 		const metadata = await this.api.uploadFile(targetPath, fileData, 'overwrite');

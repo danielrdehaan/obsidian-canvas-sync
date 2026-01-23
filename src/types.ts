@@ -378,6 +378,8 @@ export interface MediaSettings {
 	uploadDestination: MediaUploadDestination;
 	/** Local filesystem path to Dropbox folder (for ext:// link conversion) */
 	dropboxLocalPath?: string;
+	/** Dropbox folder path for shared content media uploads */
+	dropboxSharedFolder?: string;
 }
 
 /**

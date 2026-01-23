@@ -25,6 +25,7 @@ export const DEFAULT_MEDIA_SETTINGS: MediaSettings = {
 	maxFileSize: 100 * 1024 * 1024, // 100MB
 	canvasFolderName: 'canvas-sync',
 	uploadDestination: 'canvas',
+	dropboxSharedFolder: '/Canvas Media/Shared Resources',
 };
 
 /**

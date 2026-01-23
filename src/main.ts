@@ -296,6 +296,21 @@ export default class CanvasSyncPlugin extends Plugin {
 				}
 			},
 		});
+
+		// Clear Dropbox cache
+		this.addCommand({
+			id: 'clear-dropbox-cache',
+			name: 'Clear Dropbox media cache',
+			callback: async () => {
+				if (this.dropboxUploader) {
+					this.dropboxUploader.clearAllCache();
+					await this.saveMediaCache();
+					new Notice('Dropbox media cache cleared');
+				} else {
+					new Notice('Dropbox uploader not configured');
+				}
+			},
+		});
 	}
 
 	/**

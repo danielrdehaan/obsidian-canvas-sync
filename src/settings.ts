@@ -720,6 +720,40 @@ export class CanvasSyncSettingTab extends PluginSettingTab {
 							await this.plugin.saveSettings();
 						})
 				);
+
+			// Shared content Dropbox folder setting
+			let sharedFolderInput: TextComponent;
+			new Setting(container)
+				.setName('Shared Content Folder')
+				.setDesc('Dropbox folder path for shared content media (files from your shared content paths)')
+				.addText((text) => {
+					sharedFolderInput = text;
+					text
+						.setPlaceholder('/Canvas Media/Shared Resources')
+						.setValue(this.plugin.settings.media.dropboxSharedFolder || '/Canvas Media/Shared Resources')
+						.onChange(async (value) => {
+							this.plugin.settings.media.dropboxSharedFolder = value.trim() || '/Canvas Media/Shared Resources';
+							await this.plugin.saveSettings();
+						});
+				})
+				.addButton((button) =>
+					button
+						.setIcon('folder')
+						.setTooltip('Browse Dropbox folders')
+						.onClick(async () => {
+							const modal = new DropboxFolderPickerModal(
+								this.app,
+								this.plugin,
+								this.plugin.settings.media.dropboxSharedFolder || '/Canvas Media/Shared Resources',
+								(selectedPath) => {
+									this.plugin.settings.media.dropboxSharedFolder = selectedPath;
+									sharedFolderInput.setValue(selectedPath);
+									this.plugin.saveSettings();
+								}
+							);
+							modal.open();
+						})
+				);
 		} else {
 			// Show connection setup
 			new Setting(container)
