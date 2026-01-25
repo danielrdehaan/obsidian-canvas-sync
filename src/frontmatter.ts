@@ -300,7 +300,8 @@ export class FrontmatterParser {
 			const parsed = await this.parseFile(file);
 			const type = this.getEffectiveContentType(parsed);
 
-			if (type === 'page') {
+			// Include both 'page' and 'syllabus' types since syllabus creates a Canvas page
+			if (type === 'page' || type === 'syllabus') {
 				const title = this.getEffectiveTitle(parsed);
 				const slug = title
 					.toLowerCase()
