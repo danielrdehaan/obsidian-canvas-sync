@@ -25,14 +25,11 @@ export class LinkParser {
 	 */
 	isSharedContent(filePath: string): boolean {
 		if (!this.sharedContentPaths || this.sharedContentPaths.length === 0) {
-			console.log(`[Link Parser] isSharedContent: no paths configured`);
 			return false;
 		}
-		const result = this.sharedContentPaths.some(
+		return this.sharedContentPaths.some(
 			(path) => path && filePath.startsWith(path)
 		);
-		console.log(`[Link Parser] isSharedContent("${filePath}") checking against [${this.sharedContentPaths.join(', ')}] -> ${result}`);
-		return result;
 	}
 
 	/**
@@ -76,7 +73,6 @@ export class LinkParser {
 	async discoverSharedContent(coursePath: string): Promise<SharedContentDiscovery[]> {
 		const discoveries: Map<string, SharedContentDiscovery> = new Map();
 		const courseFiles = this.app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(coursePath));
-		console.log(`[Link Parser] Scanning ${courseFiles.length} files in ${coursePath} for shared content links`);
 
 		for (const file of courseFiles) {
 			const content = await this.app.vault.read(file);
@@ -85,10 +81,6 @@ export class LinkParser {
 			for (const linkTarget of links) {
 				const resolvedFile = this.resolveWikiLink(linkTarget, file.path);
 				const isShared = resolvedFile ? this.isSharedContent(resolvedFile.path) : false;
-
-				if (resolvedFile) {
-					console.log(`[Link Parser] Link "${linkTarget}" resolved to "${resolvedFile.path}", isShared=${isShared}`);
-				}
 
 				if (resolvedFile && isShared) {
 					let discovery = discoveries.get(resolvedFile.path);
@@ -100,7 +92,6 @@ export class LinkParser {
 							linkedByFiles: [],
 						};
 						discoveries.set(resolvedFile.path, discovery);
-						console.log(`[Link Parser] NEW shared content discovered: ${resolvedFile.path}`);
 					}
 
 					// Track which course file links to this shared content
@@ -188,26 +179,16 @@ export class LinkParser {
 	 * Get the shared content files that need to be synced for a course
 	 */
 	async getSharedContentToSync(coursePath: string): Promise<TFile[]> {
-		console.log(`[Link Parser] Getting shared content for course: ${coursePath}`);
-		console.log(`[Link Parser] Shared content paths configured as: ${this.sharedContentPaths.join(', ')}`);
-
 		const discoveries = await this.discoverSharedContent(coursePath);
-		console.log(`[Link Parser] Discovered ${discoveries.length} shared content files`);
-
 		const files: TFile[] = [];
 
 		for (const discovery of discoveries) {
-			console.log(`[Link Parser] Processing discovery: ${discovery.filePath}`);
 			const tfile = this.app.vault.getMarkdownFiles().find((f) => f.path === discovery.filePath);
 			if (tfile) {
 				files.push(tfile);
-				console.log(`[Link Parser] Added shared file: ${tfile.path}`);
-			} else {
-				console.log(`[Link Parser] Could not find TFile for: ${discovery.filePath}`);
 			}
 		}
 
-		console.log(`[Link Parser] Returning ${files.length} shared content files to sync`);
 		return files;
 	}
 }
