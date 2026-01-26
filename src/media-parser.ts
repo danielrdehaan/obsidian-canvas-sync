@@ -148,6 +148,82 @@ export class MediaParser {
 			}
 		}
 
+		// Pattern 4: Standard markdown links to local files - [text](path)
+		// These are NOT embeds (no ! prefix) but should still trigger upload
+		// The uploaded file will render as a download link instead of an embedded player
+		// Note: We match all [text](path) patterns and check for preceding ! manually
+		// to ensure compatibility with all Electron versions
+		const markdownLinkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
+
+		while ((match = markdownLinkPattern.exec(content)) !== null) {
+			// Skip if preceded by ! (already handled as embed by Pattern 3)
+			const matchStart = match.index;
+			if (matchStart > 0 && content[matchStart - 1] === '!') {
+				continue;
+			}
+
+			const displayText = match[1].trim();
+			const path = match[2].trim();
+
+			// Skip URLs, protocols, anchors, emails
+			if (
+				path.startsWith('http://') ||
+				path.startsWith('https://') ||
+				path.startsWith('#') ||
+				path.startsWith('mailto:') ||
+				path.startsWith('tel:') ||
+				path.includes('://')
+			) {
+				continue;
+			}
+
+			const filename = path.split('/').pop() || path;
+			const extension = this.getExtension(filename);
+			const mediaType = this.getMediaType(filename);
+
+			// Include all file types with extensions (filtering happens in uploader)
+			if (extension) {
+				embeds.push({
+					raw: match[0],
+					filename,
+					altText: displayText,
+					vaultPath: path,
+					mediaType,
+					isLink: true, // Flag to generate link HTML instead of embed
+				});
+				this.log(`Found markdown link: ${filename} (${mediaType})`);
+			}
+		}
+
+		// Pattern 5: Wiki-links to files (without ! prefix) - [[filename.ext]] or [[filename.ext|display]]
+		// These are links (not embeds) and should render as download links
+		const wikiLinkPattern = /(?<!!)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
+
+		while ((match = wikiLinkPattern.exec(content)) !== null) {
+			// Skip if preceded by ! (already handled as embed by Pattern 1)
+			const matchStart = match.index;
+			if (matchStart > 0 && content[matchStart - 1] === '!') {
+				continue;
+			}
+
+			const filename = match[1].trim();
+			const altText = match[2]?.trim();
+			const extension = this.getExtension(filename);
+			const mediaType = this.getMediaType(filename);
+
+			// Only include files with extensions (skip wiki-links to notes)
+			if (extension) {
+				embeds.push({
+					raw: match[0],
+					filename,
+					altText: altText || filename,
+					mediaType,
+					isLink: true, // Flag to generate link HTML instead of embed
+				});
+				this.log(`Found wiki link: ${filename} (${mediaType})`);
+			}
+		}
+
 		return embeds;
 	}
 
@@ -156,7 +232,7 @@ export class MediaParser {
 	 * Uses Obsidian's link resolution to find the file
 	 */
 	resolveMediaFile(embed: MediaEmbed, sourcePath: string): TFile | null {
-		// If vaultPath is already set (from markdown syntax), use it directly
+		// If vaultPath is already set (from markdown syntax), try direct resolution first
 		if (embed.vaultPath) {
 			const file = this.app.vault.getAbstractFileByPath(embed.vaultPath);
 			if (file instanceof this.app.vault.adapter.constructor) {
@@ -172,11 +248,19 @@ export class MediaParser {
 			if (relativeFile && 'extension' in relativeFile) {
 				return relativeFile as TFile;
 			}
-			return null;
+			// Fall through to search by filename (Obsidian resolves links flexibly)
 		}
 
-		// For wiki-link syntax, use Obsidian's link resolution
-		// First, try to find by exact filename
+		// Use Obsidian's metadataCache for link resolution (handles spaces, case, etc.)
+		const cache = this.app.metadataCache;
+		const linkPath = embed.vaultPath || embed.filename;
+		const linkedFile = cache.getFirstLinkpathDest(linkPath, sourcePath);
+		if (linkedFile) {
+			this.log(`Resolved via cache: ${linkPath} to ${linkedFile.path}`);
+			return linkedFile;
+		}
+
+		// Fallback: search all files by filename
 		const files = this.app.vault.getFiles();
 
 		// Try exact match first
@@ -187,19 +271,21 @@ export class MediaParser {
 			}
 		}
 
-		// Try with metadataCache for wikilinks
-		const cache = this.app.metadataCache;
-		const linkedFile = cache.getFirstLinkpathDest(embed.filename, sourcePath);
-		if (linkedFile) {
-			this.log(`Resolved via cache: ${embed.filename} to ${linkedFile.path}`);
-			return linkedFile;
-		}
-
 		// Try case-insensitive match
 		const lowerFilename = embed.filename.toLowerCase();
 		for (const file of files) {
 			if (file.name.toLowerCase() === lowerFilename) {
 				this.log(`Resolved (case-insensitive) ${embed.filename} to ${file.path}`);
+				return file;
+			}
+		}
+
+		// Try normalizing underscores/spaces (common mismatch)
+		const normalizedTarget = embed.filename.toLowerCase().replace(/[_\s]+/g, ' ');
+		for (const file of files) {
+			const normalizedFile = file.name.toLowerCase().replace(/[_\s]+/g, ' ');
+			if (normalizedFile === normalizedTarget) {
+				this.log(`Resolved (normalized) ${embed.filename} to ${file.path}`);
 				return file;
 			}
 		}

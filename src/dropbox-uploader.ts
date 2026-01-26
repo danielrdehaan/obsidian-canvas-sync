@@ -277,18 +277,19 @@ export class DropboxUploader {
 		}
 		this.log(`Resolved file: ${embed.filename} -> ${file.path}`);
 
-		// Determine target folder based on whether media is from shared content
+		// Determine target folder based on whether the SOURCE FILE is shared content
+		// (not the media file itself - we check if the markdown file embedding it is shared)
 		let targetFolderPath = baseFolderPath;
 		const hasSharedFolder = !!sharedFolderPath;
 		const hasChecker = !!isSharedContent;
-		const isShared = isSharedContent ? isSharedContent(file.path) : false;
-		this.log(`Shared content routing check: hasSharedFolder=${hasSharedFolder}, hasChecker=${hasChecker}, isShared=${isShared}, filePath="${file.path}"`);
+		const isShared = isSharedContent ? isSharedContent(sourcePath) : false;
+		this.log(`Shared content routing check: hasSharedFolder=${hasSharedFolder}, hasChecker=${hasChecker}, isShared=${isShared}, sourcePath="${sourcePath}"`);
 
 		if (sharedFolderPath && isSharedContent && isShared) {
 			targetFolderPath = sharedFolderPath;
-			this.log(`Media "${file.path}" is shared content, routing to: ${targetFolderPath}`);
+			this.log(`Source "${sourcePath}" is shared content, routing media to: ${targetFolderPath}`);
 		} else {
-			this.log(`Media "${file.path}" using course folder: ${targetFolderPath}`);
+			this.log(`Source "${sourcePath}" using course folder: ${targetFolderPath}`);
 		}
 
 		// Check file size (if limit is enforced)
@@ -313,7 +314,8 @@ export class DropboxUploader {
 				cached.sharedUrl,
 				file.name,
 				mediaType,
-				embed.altText
+				embed.altText,
+				embed.isLink
 			);
 			return { original: embed.raw, replacement: html };
 		}
@@ -356,7 +358,8 @@ export class DropboxUploader {
 			downloadUrl,
 			file.name,
 			mediaType,
-			embed.altText
+			embed.altText,
+			embed.isLink
 		);
 
 		return { original: embed.raw, replacement: html };
@@ -412,7 +415,8 @@ export class DropboxUploader {
 				cached.sharedUrl,
 				embed.filename,
 				mediaType,
-				embed.altText
+				embed.altText,
+				embed.isLink
 			);
 			return { original: embed.raw, replacement: html };
 		}
@@ -455,7 +459,8 @@ export class DropboxUploader {
 			downloadUrl,
 			embed.filename,
 			mediaType,
-			embed.altText
+			embed.altText,
+			embed.isLink
 		);
 
 		return { original: embed.raw, replacement: html };
@@ -469,10 +474,16 @@ export class DropboxUploader {
 		downloadUrl: string,
 		filename: string,
 		mediaType: MediaType,
-		altText?: string
+		altText?: string,
+		isLink?: boolean
 	): string {
 		const displayName = altText || filename;
 		const mimeType = this.parser.getMimeType(filename);
+
+		// If it's a link (not embed), always generate a download link
+		if (isLink) {
+			return `<a href="${downloadUrl}" class="cs-link cs-media-link">${escapeHtml(displayName)}</a>`;
+		}
 
 		switch (mediaType) {
 			case 'image':

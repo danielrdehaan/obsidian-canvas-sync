@@ -357,6 +357,8 @@ export interface MediaEmbed {
 	externalPath?: string;
 	/** True if this is an ext:// external file embed */
 	isExternal?: boolean;
+	/** True for [text](file) links vs ![text](file) embeds - renders as download link instead of player */
+	isLink?: boolean;
 }
 
 /**

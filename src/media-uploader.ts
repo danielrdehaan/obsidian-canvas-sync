@@ -283,7 +283,8 @@ export class MediaUploader {
 				cached.canvasUrl,
 				mediaType,
 				embed.altText || embed.filename,
-				courseId
+				courseId,
+				embed.isLink
 			);
 			return { original: embed.raw, replacement: html };
 		}
@@ -314,7 +315,8 @@ export class MediaUploader {
 			canvasFile.url,
 			mediaType,
 			embed.altText || embed.filename,
-			courseId
+			courseId,
+			embed.isLink
 		);
 
 		return { original: embed.raw, replacement: html };
@@ -372,7 +374,8 @@ export class MediaUploader {
 				cached.canvasUrl,
 				mediaType,
 				embed.altText || embed.filename,
-				courseId
+				courseId,
+				embed.isLink
 			);
 			return { original: embed.raw, replacement: html };
 		}
@@ -403,7 +406,8 @@ export class MediaUploader {
 			canvasFile.url,
 			mediaType,
 			embed.altText || embed.filename,
-			courseId
+			courseId,
+			embed.isLink
 		);
 
 		return { original: embed.raw, replacement: html };
@@ -457,11 +461,17 @@ export class MediaUploader {
 		fileUrl: string,
 		mediaType: MediaType,
 		altText: string,
-		courseId: number
+		courseId: number,
+		isLink?: boolean
 	): string {
 		// Canvas file URLs for embedding
 		const previewUrl = `/courses/${courseId}/files/${fileId}/preview`;
 		const downloadUrl = `/courses/${courseId}/files/${fileId}/download`;
+
+		// If it's a link (not embed), always generate a download link
+		if (isLink) {
+			return `<a href="${downloadUrl}" class="cs-link cs-media-link">${escapeHtml(altText)}</a>`;
+		}
 
 		switch (mediaType) {
 			case 'image':
@@ -474,7 +484,7 @@ export class MediaUploader {
 				return this.generatePdfHtml(previewUrl, downloadUrl, altText);
 			default:
 				// Generic file link
-				return `<a href="${downloadUrl}" class="cs-link">${altText}</a>`;
+				return `<a href="${downloadUrl}" class="cs-link">${escapeHtml(altText)}</a>`;
 		}
 	}
 
