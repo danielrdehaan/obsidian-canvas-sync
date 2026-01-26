@@ -16,7 +16,15 @@ npm run dev          # Development build with watch mode (inline source maps)
 npm run build        # Production build (runs tsc type check first)
 ```
 
-The build outputs `main.js` to the root directory. For local development, symlink or copy the plugin folder to `.obsidian/plugins/canvas-sync/` in a test vault.
+The build outputs `main.js` to the root directory.
+
+**Important:** After building, always copy the plugin to the test vault:
+
+```bash
+cp main.js /Users/danielrdehaan/Documents/DRD_Vault/.obsidian/plugins/canvas-sync/
+```
+
+Then reload Obsidian (`Cmd+R`) to pick up the changes.
 
 ## Architecture
 

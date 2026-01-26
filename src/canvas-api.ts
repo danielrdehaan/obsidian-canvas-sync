@@ -96,6 +96,14 @@ export class CanvasApiError extends Error {
 			return new CanvasApiError(`Request timed out: ${message}`, 'timeout');
 		}
 
+		// Check if the error message contains an HTTP status code (e.g., "Request failed, status 404")
+		// Obsidian's requestUrl throws errors with status codes in the message for non-2xx responses
+		const statusMatch = message.match(/status[:\s]+(\d{3})/i);
+		if (statusMatch) {
+			const status = parseInt(statusMatch[1], 10);
+			return CanvasApiError.fromResponse(status, message);
+		}
+
 		return new CanvasApiError(`Network error: ${message}`, 'network');
 	}
 }
