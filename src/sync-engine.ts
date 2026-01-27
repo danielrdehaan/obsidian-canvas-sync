@@ -14,7 +14,19 @@ import type {
 	CanvasContentType,
 	ParsedFile,
 	StyleSettings,
+	SyncWarning,
+	CanvasModuleItem,
 } from './types';
+
+/**
+ * Tracking sets for existing module items to prevent duplicates
+ */
+interface ExistingItemSets {
+	pageUrls: Set<string | undefined>;
+	discussionIds: Set<number>;
+	assignmentIds: Set<number>;
+	externalUrls: Set<string>;
+}
 
 /**
  * Sync engine - coordinates syncing files to Canvas
@@ -30,6 +42,7 @@ export class SyncEngine {
 	private debugMode: boolean;
 	private styleSettings?: StyleSettings;
 	private customCss: string = '';
+	private warnings: SyncWarning[] = [];
 
 	constructor(
 		app: App,
@@ -97,6 +110,134 @@ export class SyncEngine {
 	private log(...args: unknown[]): void {
 		if (this.debugMode) {
 			console.log('[Sync Engine]', ...args);
+		}
+	}
+
+	/**
+	 * Add a warning to the collection
+	 */
+	private addWarning(warning: SyncWarning): void {
+		this.warnings.push(warning);
+		this.log('Warning:', warning);
+	}
+
+	/**
+	 * Get all warnings collected during sync
+	 */
+	getWarnings(): SyncWarning[] {
+		return [...this.warnings];
+	}
+
+	/**
+	 * Clear all warnings (call at start of new sync)
+	 */
+	clearWarnings(): void {
+		this.warnings = [];
+	}
+
+	/**
+	 * Process items in batches with concurrency limit
+	 * Enables parallel processing while respecting API rate limits
+	 */
+	private async processInBatches<T, R>(
+		items: T[],
+		processor: (item: T) => Promise<R>,
+		concurrency: number = 3
+	): Promise<R[]> {
+		const results: R[] = [];
+		for (let i = 0; i < items.length; i += concurrency) {
+			const batch = items.slice(i, i + concurrency);
+			const batchResults = await Promise.all(batch.map(processor));
+			results.push(...batchResults);
+		}
+		return results;
+	}
+
+	/**
+	 * Build tracking sets from existing module items to prevent duplicates
+	 * Pure function that extracts IDs/URLs from Canvas module items
+	 */
+	private buildExistingItemSets(existingItems: CanvasModuleItem[]): ExistingItemSets {
+		return {
+			pageUrls: new Set(
+				existingItems.filter(i => i.type === 'Page').map(i => i.page_url)
+			),
+			discussionIds: new Set<number>(
+				existingItems
+					.filter(i => i.type === 'Discussion' && i.content_id !== undefined)
+					.map(i => Number(i.content_id))
+			),
+			assignmentIds: new Set<number>(
+				existingItems
+					.filter(i => i.type === 'Assignment' && i.content_id !== undefined)
+					.map(i => Number(i.content_id))
+			),
+			externalUrls: new Set(
+				existingItems.filter(i => i.type === 'ExternalUrl').map(i => i.title)
+			),
+		};
+	}
+
+	/**
+	 * Add a sync result to the appropriate module position
+	 * Handles all content types (page, discussion, assignment, external_url)
+	 */
+	private async addItemToModule(
+		courseId: number,
+		moduleId: number,
+		result: SyncResult,
+		position: number,
+		existingSets: ExistingItemSets
+	): Promise<void> {
+		this.log(`Attempting to add ${result.canvasType} "${result.title}" to module. pageUrl=${result.pageUrl}, discussionId=${result.discussionId}, assignmentId=${result.assignmentId}, externalUrl=${result.externalUrl}`);
+
+		if ((result.canvasType === 'page' || result.canvasType === 'syllabus') && result.pageUrl) {
+			const alreadyExists = existingSets.pageUrls.has(result.pageUrl);
+			this.log(`Page ${result.pageUrl} already in module: ${alreadyExists}`);
+			if (!alreadyExists) {
+				await this.api.addPageToModule(courseId, moduleId, result.pageUrl, position);
+				existingSets.pageUrls.add(result.pageUrl);
+				this.log(`Added page to module: ${result.title}`);
+			}
+		} else if (result.canvasType === 'discussion' && result.discussionId) {
+			const alreadyExists = existingSets.discussionIds.has(result.discussionId);
+			this.log(`Discussion ${result.discussionId} already in module: ${alreadyExists}`);
+			if (!alreadyExists) {
+				await this.api.addDiscussionToModule(courseId, moduleId, result.discussionId, position);
+				existingSets.discussionIds.add(result.discussionId);
+				this.log(`Added discussion to module: ${result.title}`);
+			}
+		} else if (result.canvasType === 'graded_discussion' && result.discussionId && result.assignmentId) {
+			const alreadyExists = existingSets.discussionIds.has(result.discussionId);
+			this.log(`Graded discussion ${result.discussionId} already in module: ${alreadyExists}`);
+			if (!alreadyExists) {
+				await this.api.addAssignmentToModule(courseId, moduleId, result.assignmentId, position);
+				existingSets.discussionIds.add(result.discussionId);
+				this.log(`Added graded discussion to module: ${result.title}`);
+			}
+		} else if (result.canvasType === 'assignment' && result.assignmentId) {
+			const alreadyExists = existingSets.assignmentIds.has(result.assignmentId);
+			this.log(`Assignment ${result.assignmentId} (${typeof result.assignmentId}) already in module: ${alreadyExists}, set contains: [${Array.from(existingSets.assignmentIds).join(', ')}]`);
+			if (!alreadyExists) {
+				await this.api.addAssignmentToModule(courseId, moduleId, result.assignmentId, position);
+				existingSets.assignmentIds.add(result.assignmentId);
+				this.log(`Added assignment to module: ${result.title}`);
+			}
+		} else if (result.canvasType === 'external_url' && result.externalUrl) {
+			const alreadyExists = existingSets.externalUrls.has(result.title);
+			this.log(`External URL "${result.title}" already in module: ${alreadyExists}`);
+			if (!alreadyExists) {
+				await this.api.addExternalUrlToModule(
+					courseId,
+					moduleId,
+					result.title,
+					result.externalUrl,
+					position,
+					result.newTab ?? true
+				);
+				existingSets.externalUrls.add(result.title);
+				this.log(`Added external URL to module: ${result.title}`);
+			}
 		}
 	}
 
@@ -178,9 +319,9 @@ export class SyncEngine {
 		for (const subfolder of subfolders) {
 			// Skip folders that shouldn't be modules
 			const isModule = this.isModuleFolder(subfolder.name);
-			console.log(`[Sync Engine] Folder "${subfolder.name}": isModule=${isModule}, inExcluded=${this.excludedFolders.has(subfolder.name)}`);
+			this.log(`Folder "${subfolder.name}": isModule=${isModule}, inExcluded=${this.excludedFolders.has(subfolder.name)}`);
 			if (!isModule) {
-				console.log(`[Sync Engine] Skipping non-module folder: ${subfolder.name}`);
+				this.log(`Skipping non-module folder: ${subfolder.name}`);
 				continue;
 			}
 
@@ -376,8 +517,12 @@ export class SyncEngine {
 				}
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
-				this.log('Error processing media embeds via Dropbox:', errorMsg);
-				console.error('[Sync Engine] Dropbox media error details:', error);
+				this.addWarning({
+					type: 'dropbox',
+					message: `Failed to process media embeds via Dropbox: ${errorMsg}`,
+					filePath: file.path,
+					recoverable: true,
+				});
 				// Continue without media - don't fail the sync
 			}
 
@@ -393,7 +538,12 @@ export class SyncEngine {
 				}
 			} catch (error) {
 				const errorMsg = error instanceof Error ? error.message : String(error);
-				this.log('Error processing ext:// links via Dropbox:', errorMsg);
+				this.addWarning({
+					type: 'dropbox',
+					message: `Failed to process ext:// links: ${errorMsg}`,
+					filePath: file.path,
+					recoverable: true,
+				});
 				// Continue without ext:// links - don't fail the sync
 			}
 		} else if (this.mediaUploader) {
@@ -409,7 +559,13 @@ export class SyncEngine {
 					this.log(`Processed ${mediaReplacements.length} media embeds via Canvas`);
 				}
 			} catch (error) {
-				this.log('Error processing media embeds:', error);
+				const errorMsg = error instanceof Error ? error.message : String(error);
+				this.addWarning({
+					type: 'media',
+					message: `Failed to process media embeds via Canvas: ${errorMsg}`,
+					filePath: file.path,
+					recoverable: true,
+				});
 				// Continue without media - don't fail the sync
 			}
 		}
@@ -669,23 +825,35 @@ export class SyncEngine {
 				if (sharedContentFiles.length > 0) {
 					progressCallback?.(`  Shared Content (${sharedContentFiles.length} files)...`);
 
-					for (const file of sharedContentFiles) {
-						// Skip if already synced (shouldn't happen in shared content, but defensive)
+					// Filter out already synced files and prepare for batch processing
+					const filesToSync = sharedContentFiles.filter(file => {
 						if (syncedFilePaths.has(file.path)) {
 							this.log(`Skipping "${file.path}" - already synced`);
-							continue;
+							return false;
 						}
+						return true;
+					});
 
-						const parsed = await this.frontmatter.parseFile(file);
-						const result = await this.syncFile(
-							file,
-							courseId,
-							pageSlugMap,
-							discussionTitleMap,
-							progressCallback,
-							course
-						);
+					// Process shared content files in parallel batches (concurrency of 3)
+					const sharedContentResults = await this.processInBatches(
+						filesToSync,
+						async (file) => {
+							const parsed = await this.frontmatter.parseFile(file);
+							const result = await this.syncFile(
+								file,
+								courseId,
+								pageSlugMap,
+								discussionTitleMap,
+								progressCallback,
+								course
+							);
+							return { file, parsed, result };
+						},
+						3 // concurrency limit
+					);
 
+					// Process results sequentially to update maps and emit progress
+					for (const { file, parsed, result } of sharedContentResults) {
 						courseResult.results.push(result);
 
 						// Track synced file (even if skipped, to avoid re-processing)
@@ -698,12 +866,12 @@ export class SyncEngine {
 							// Update pageSlugMap with the actual Canvas URL (not our calculated slug)
 							if (result.pageUrl) {
 								pageSlugMap.set(parsed.filename, result.pageUrl);
-								console.log(`[Sync Engine] Updated pageSlugMap: "${parsed.filename}" -> "${result.pageUrl}"`);
+								this.log(`Updated pageSlugMap: "${parsed.filename}" -> "${result.pageUrl}"`);
 							}
 							// Also update discussionTitleMap for discussions
 							if (result.discussionId) {
 								discussionTitleMap.set(parsed.filename, result.discussionId);
-								console.log(`[Sync Engine] Updated discussionTitleMap: "${parsed.filename}" -> ${result.discussionId}`);
+								this.log(`Updated discussionTitleMap: "${parsed.filename}" -> ${result.discussionId}`);
 							}
 						} else {
 							courseResult.failed++;
@@ -739,67 +907,122 @@ export class SyncEngine {
 					);
 					this.log(`Module "${module.name}" result: id=${canvasModule.id}, published=${canvasModule.published}`);
 
-					// Get existing module items to avoid duplicates
-					console.log(`[Sync Engine] Getting existing items for module ${canvasModule.id}`);
+					// Get existing module items and build tracking sets to avoid duplicates
+					this.log(`Getting existing items for module ${canvasModule.id}`);
 					const existingItems = await this.api.getModuleItems(courseId, canvasModule.id);
-					console.log(`[Sync Engine] Found ${existingItems.length} existing items in module`);
+					this.log(`Found ${existingItems.length} existing items in module`);
 					// Debug: log all items with their types and IDs
 					for (const item of existingItems) {
-						console.log(`[Sync Engine]   Item: type="${item.type}", content_id=${item.content_id} (${typeof item.content_id}), title="${item.title}"`);
+						this.log(`  Item: type="${item.type}", content_id=${item.content_id} (${typeof item.content_id}), title="${item.title}"`);
 					}
-					const existingPageUrls = new Set(existingItems.filter(i => i.type === 'Page').map(i => i.page_url));
-					const existingDiscussionIds = new Set<number>(
-						existingItems
-							.filter(i => i.type === 'Discussion' && i.content_id !== undefined)
-							.map(i => Number(i.content_id))
-					);
-					const existingAssignmentIds = new Set<number>(
-						existingItems
-							.filter(i => i.type === 'Assignment' && i.content_id !== undefined)
-							.map(i => Number(i.content_id))
-					);
-					const existingExternalUrls = new Set(existingItems.filter(i => i.type === 'ExternalUrl').map(i => i.title));
-					console.log(`[Sync Engine] existingAssignmentIds:`, Array.from(existingAssignmentIds));
+					const existingSets = this.buildExistingItemSets(existingItems);
+					this.log(`existingAssignmentIds:`, Array.from(existingSets.assignmentIds));
 
-					// Sync each item in the module
-					let itemPosition = 1;
+					// Separate module items into shared (already synced) and needing sync
+					type ModuleItemEntry = {
+						item: ModuleItem;
+						file: TFile;
+						isShared: boolean;
+					};
+
+					const moduleItemEntries: ModuleItemEntry[] = [];
 					for (const item of module.items) {
 						const file = this.app.vault.getAbstractFileByPath(item.filePath) as TFile;
 						if (!file) continue;
+						moduleItemEntries.push({
+							item,
+							file,
+							isShared: syncedFilePaths.has(item.filePath),
+						});
+					}
 
-						// Skip files already synced as shared content, but still add to module
-						if (syncedFilePaths.has(item.filePath)) {
+					// Sync items that need syncing in parallel batches (concurrency of 2)
+					const itemsToSync = moduleItemEntries.filter(e => !e.isShared);
+					type SyncedItemResult = {
+						entry: ModuleItemEntry;
+						parsed: ParsedFile;
+						result: SyncResult;
+					};
+
+					const syncedItemResults: SyncedItemResult[] = await this.processInBatches(
+						itemsToSync,
+						async (entry) => {
+							const parsed = await this.frontmatter.parseFile(entry.file);
+							const result = await this.syncFile(
+								entry.file,
+								courseId,
+								pageSlugMap,
+								discussionTitleMap,
+								progressCallback,
+								course
+							);
+							return { entry, parsed, result };
+						},
+						2 // concurrency limit for module items
+					);
+
+					// Create a map for quick lookup of sync results
+					const syncResultMap = new Map<string, SyncedItemResult>();
+					for (const syncedItem of syncedItemResults) {
+						syncResultMap.set(syncedItem.entry.item.filePath, syncedItem);
+					}
+
+					// Process all items sequentially to maintain position ordering
+					let itemPosition = 1;
+					for (const entry of moduleItemEntries) {
+						const { item, file, isShared } = entry;
+
+						if (isShared) {
+							// Handle shared content - already synced, just add to module
 							this.log(`Skipping sync for "${item.title}" - already synced as shared content`);
 
-							// Still need to add to module - get Canvas URL from pageSlugMap
 							const parsed = await this.frontmatter.parseFile(file);
 							const pageUrl = pageSlugMap.get(parsed.filename);
 							const discussionId = discussionTitleMap.get(parsed.filename);
 
-							if (pageUrl && !existingPageUrls.has(pageUrl)) {
-								try {
-									await this.api.addPageToModule(
+							// Create a partial SyncResult for the shared content
+							try {
+								if (pageUrl) {
+									await this.addItemToModule(
 										courseId,
 										canvasModule.id,
-										pageUrl,
-										itemPosition
+										{
+											success: true,
+											filePath: item.filePath,
+											canvasType: 'page',
+											title: item.title,
+											action: 'updated',
+											courseId,
+											pageUrl,
+										},
+										itemPosition,
+										existingSets
 									);
-									console.log(`[Sync Engine] Added shared content page to module: ${item.title}`);
-								} catch (moduleItemError) {
-									console.log(`[Sync Engine] Error adding shared content to module: ${moduleItemError}`);
-								}
-							} else if (discussionId && !existingDiscussionIds.has(discussionId)) {
-								try {
-									await this.api.addDiscussionToModule(
+								} else if (discussionId) {
+									await this.addItemToModule(
 										courseId,
 										canvasModule.id,
-										discussionId,
-										itemPosition
+										{
+											success: true,
+											filePath: item.filePath,
+											canvasType: 'discussion',
+											title: item.title,
+											action: 'updated',
+											courseId,
+											discussionId,
+										},
+										itemPosition,
+										existingSets
 									);
-									console.log(`[Sync Engine] Added shared content discussion to module: ${item.title}`);
-								} catch (moduleItemError) {
-									console.log(`[Sync Engine] Error adding shared content to module: ${moduleItemError}`);
 								}
+							} catch (moduleItemError) {
+								const errorMsg = moduleItemError instanceof Error ? moduleItemError.message : String(moduleItemError);
+								this.addWarning({
+									type: 'module',
+									message: `Failed to add shared content to module: ${errorMsg}`,
+									filePath: item.filePath,
+									recoverable: true,
+								});
 							}
 
 							itemPosition++;
@@ -807,20 +1030,13 @@ export class SyncEngine {
 							continue;
 						}
 
-						const parsed = await this.frontmatter.parseFile(file);
+						// Get pre-computed sync result for this item
+						const syncedItem = syncResultMap.get(item.filePath);
+						if (!syncedItem) continue;
 
-						const result = await this.syncFile(
-							file,
-							courseId,
-							pageSlugMap,
-							discussionTitleMap,
-							progressCallback,
-							course
-						);
+						const { parsed, result } = syncedItem;
 
 						courseResult.results.push(result);
-
-						// Track synced file to prevent duplicate syncs in other modules
 						syncedFilePaths.add(item.filePath);
 
 						if (result.action === 'skipped') {
@@ -828,87 +1044,32 @@ export class SyncEngine {
 						} else if (result.success) {
 							courseResult.success++;
 
-							// Update maps with actual Canvas IDs/URLs for future file conversions
+							// Update maps with actual Canvas IDs/URLs
 							if ((result.canvasType === 'page' || result.canvasType === 'syllabus') && result.pageUrl) {
 								pageSlugMap.set(parsed.filename, result.pageUrl);
-								console.log(`[Sync Engine] Updated pageSlugMap: "${parsed.filename}" -> "${result.pageUrl}"`);
+								this.log(`Updated pageSlugMap: "${parsed.filename}" -> "${result.pageUrl}"`);
 							} else if ((result.canvasType === 'discussion' || result.canvasType === 'graded_discussion') && result.discussionId) {
 								discussionTitleMap.set(parsed.filename, result.discussionId);
-								console.log(`[Sync Engine] Updated discussionTitleMap: "${parsed.filename}" -> ${result.discussionId}`);
+								this.log(`Updated discussionTitleMap: "${parsed.filename}" -> ${result.discussionId}`);
 							}
 
 							// Add item to module if not already present
-							console.log(`[Sync Engine] Attempting to add ${result.canvasType} "${result.title}" to module. pageUrl=${result.pageUrl}, discussionId=${result.discussionId}, assignmentId=${result.assignmentId}, externalUrl=${result.externalUrl}`);
 							try {
-								if ((result.canvasType === 'page' || result.canvasType === 'syllabus') && result.pageUrl) {
-									// Syllabus creates both a course syllabus AND a page for module inclusion
-									const alreadyExists = existingPageUrls.has(result.pageUrl);
-									console.log(`[Sync Engine] Page ${result.pageUrl} already in module: ${alreadyExists}`);
-									if (!alreadyExists) {
-										await this.api.addPageToModule(
-											courseId,
-											canvasModule.id,
-											result.pageUrl,
-											itemPosition
-										);
-										console.log(`[Sync Engine] Added page to module: ${result.title}`);
-									}
-								} else if (result.canvasType === 'discussion' && result.discussionId) {
-									// Standard (ungraded) discussion - add as Discussion
-									const alreadyExists = existingDiscussionIds.has(result.discussionId);
-									console.log(`[Sync Engine] Discussion ${result.discussionId} already in module: ${alreadyExists}`);
-									if (!alreadyExists) {
-										await this.api.addDiscussionToModule(
-											courseId,
-											canvasModule.id,
-											result.discussionId,
-											itemPosition
-										);
-										console.log(`[Sync Engine] Added discussion to module: ${result.title}`);
-									}
-								} else if (result.canvasType === 'graded_discussion' && result.discussionId && result.assignmentId) {
-									// Graded discussion - Canvas returns these as type="Discussion" in module items,
-									// so we check against existingDiscussionIds using the discussionId
-									const alreadyExists = existingDiscussionIds.has(result.discussionId);
-									console.log(`[Sync Engine] Graded discussion ${result.discussionId} already in module: ${alreadyExists}`);
-									if (!alreadyExists) {
-										await this.api.addAssignmentToModule(
-											courseId,
-											canvasModule.id,
-											result.assignmentId,
-											itemPosition
-										);
-										console.log(`[Sync Engine] Added graded discussion to module: ${result.title}`);
-									}
-								} else if (result.canvasType === 'assignment' && result.assignmentId) {
-									const alreadyExists = existingAssignmentIds.has(result.assignmentId);
-									console.log(`[Sync Engine] Assignment ${result.assignmentId} (${typeof result.assignmentId}) already in module: ${alreadyExists}, set contains: [${Array.from(existingAssignmentIds).join(', ')}]`);
-									if (!alreadyExists) {
-										await this.api.addAssignmentToModule(
-											courseId,
-											canvasModule.id,
-											result.assignmentId,
-											itemPosition
-										);
-										console.log(`[Sync Engine] Added assignment to module: ${result.title}`);
-									}
-								} else if (result.canvasType === 'external_url' && result.externalUrl) {
-									const alreadyExists = existingExternalUrls.has(result.title);
-									console.log(`[Sync Engine] External URL "${result.title}" already in module: ${alreadyExists}`);
-									if (!alreadyExists) {
-										await this.api.addExternalUrlToModule(
-											courseId,
-											canvasModule.id,
-											result.title,
-											result.externalUrl,
-											itemPosition,
-											result.newTab ?? true
-										);
-										console.log(`[Sync Engine] Added external URL to module: ${result.title}`);
-									}
-								}
+								await this.addItemToModule(
+									courseId,
+									canvasModule.id,
+									result,
+									itemPosition,
+									existingSets
+								);
 							} catch (moduleItemError) {
-								console.log(`[Sync Engine] Error adding item to module: ${moduleItemError}`);
+								const errorMsg = moduleItemError instanceof Error ? moduleItemError.message : String(moduleItemError);
+								this.addWarning({
+									type: 'module',
+									message: `Failed to add ${result.canvasType} to module: ${errorMsg}`,
+									filePath: item.filePath,
+									recoverable: true,
+								});
 							}
 						} else {
 							courseResult.failed++;
@@ -1047,7 +1208,7 @@ export class SyncEngine {
 			moduleItemCount,
 			totalCount: sharedContentCount + moduleItemCount,
 		};
-		console.log('[Sync Engine] calculateSyncTotals:', totals);
+		this.log('calculateSyncTotals:', totals);
 		return totals;
 	}
 

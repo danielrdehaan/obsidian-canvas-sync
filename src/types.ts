@@ -568,3 +568,48 @@ export interface DropboxSharedLinkMetadata {
 	path_lower: string;
 }
 
+/**
+ * Settings for allowed external file paths
+ * Used to restrict file system access in media uploads
+ */
+export interface AllowedExternalPaths {
+	/** List of allowed absolute paths that can be read from */
+	paths: string[];
+}
+
+/**
+ * Warning generated during sync operation
+ */
+export interface SyncWarning {
+	/** Type of warning for categorization */
+	type: 'media' | 'module' | 'dropbox' | 'link' | 'general';
+	/** Human-readable warning message */
+	message: string;
+	/** Associated file path (if applicable) */
+	filePath?: string;
+	/** Whether sync can continue despite this warning */
+	recoverable: boolean;
+}
+
+/**
+ * Mapping between local files and Canvas module items
+ * Used for tracking which items to clean up when files are deleted
+ */
+export interface ModuleItemMapping {
+	/** Canvas course ID */
+	courseId: number;
+	/** Canvas module ID */
+	moduleId: number;
+	/** Canvas module item ID */
+	moduleItemId: number;
+	/** Local file path in vault */
+	filePath: string;
+	/** Timestamp of last sync (Unix ms) */
+	lastSynced: number;
+}
+
+/**
+ * Collection of module item mappings for persistence
+ */
+export type ModuleItemMappings = Record<string, ModuleItemMapping>;
+

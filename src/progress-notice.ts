@@ -1,4 +1,5 @@
 import { Notice } from 'obsidian';
+import type { SyncWarning } from './types';
 
 /**
  * Progress state for sync operations
@@ -25,6 +26,27 @@ export class ProgressNotice {
 	private progressText: HTMLElement | null = null;
 	private phaseText: HTMLElement | null = null;
 	private itemText: HTMLElement | null = null;
+	private debugMode: boolean;
+
+	constructor(debugMode = false) {
+		this.debugMode = debugMode;
+	}
+
+	/**
+	 * Set debug mode
+	 */
+	setDebugMode(debug: boolean): void {
+		this.debugMode = debug;
+	}
+
+	/**
+	 * Log debug messages
+	 */
+	private log(...args: unknown[]): void {
+		if (this.debugMode) {
+			console.log('[ProgressNotice]', ...args);
+		}
+	}
 
 	/**
 	 * Show the progress notice with initial state
@@ -54,7 +76,7 @@ export class ProgressNotice {
 
 		this.update(initialState);
 
-		console.log('[ProgressNotice] Shown with', initialState);
+		this.log('Shown with', initialState);
 	}
 
 	/**
@@ -64,7 +86,7 @@ export class ProgressNotice {
 		if (!this.notice) return;
 
 		const percent = state.total > 0 ? (state.current / state.total) * 100 : 0;
-		console.log('[ProgressNotice] Update:', state.current, '/', state.total, `(${percent.toFixed(1)}%)`);
+		this.log('Update:', state.current, '/', state.total, `(${percent.toFixed(1)}%)`);
 
 		if (this.phaseText) {
 			this.phaseText.setText(state.phase);
@@ -105,6 +127,62 @@ export class ProgressNotice {
 
 		// Auto-dismiss after 5 seconds
 		setTimeout(() => this.hide(), 5000);
+	}
+
+	/**
+	 * Show completion state with warnings and auto-dismiss
+	 */
+	completeWithWarnings(successCount: number, failedCount: number, warnings: SyncWarning[]): void {
+		if (!this.notice || !this.containerEl) return;
+
+		this.containerEl.empty();
+		this.containerEl.removeClass('canvas-sync-progress-notice');
+		this.containerEl.addClass('canvas-sync-progress-complete');
+
+		const warningCount = warnings.length;
+
+		// Determine icon and main message
+		let icon: string;
+		let message: string;
+
+		if (failedCount > 0) {
+			icon = '⚠️';
+			message = `Sync complete: ${successCount} succeeded, ${failedCount} failed`;
+		} else if (warningCount > 0) {
+			icon = '⚠️';
+			message = `Sync complete: ${successCount} files (${warningCount} warning${warningCount > 1 ? 's' : ''})`;
+		} else {
+			icon = '✓';
+			message = `Sync complete: ${successCount} files synced`;
+		}
+
+		// Create summary line
+		this.containerEl.createDiv({ cls: 'cs-progress-complete', text: `${icon} ${message}` });
+
+		// If there are warnings, show expandable details
+		if (warningCount > 0) {
+			const warningsContainer = this.containerEl.createDiv({ cls: 'cs-warnings-container' });
+
+			// Group warnings by type
+			const warningsByType = new Map<string, SyncWarning[]>();
+			for (const warning of warnings) {
+				const existing = warningsByType.get(warning.type) || [];
+				existing.push(warning);
+				warningsByType.set(warning.type, existing);
+			}
+
+			// Display summary of warnings by type
+			for (const [type, typeWarnings] of warningsByType) {
+				const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
+				warningsContainer.createDiv({
+					cls: 'cs-warning-summary',
+					text: `${typeLabel}: ${typeWarnings.length} warning${typeWarnings.length > 1 ? 's' : ''}`,
+				});
+			}
+		}
+
+		// Auto-dismiss after 8 seconds (longer to allow reading warnings)
+		setTimeout(() => this.hide(), warningCount > 0 ? 8000 : 5000);
 	}
 
 	/**

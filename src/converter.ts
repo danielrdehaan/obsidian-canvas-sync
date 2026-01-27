@@ -40,12 +40,30 @@ interface ThemeColors {
  */
 export class MarkdownConverter {
 	private marked: Marked;
+	private debugMode: boolean;
 
-	constructor() {
+	constructor(debugMode = false) {
 		this.marked = new Marked({
 			gfm: true,
 			breaks: true,
 		});
+		this.debugMode = debugMode;
+	}
+
+	/**
+	 * Set debug mode
+	 */
+	setDebugMode(debug: boolean): void {
+		this.debugMode = debug;
+	}
+
+	/**
+	 * Log debug messages
+	 */
+	private log(...args: unknown[]): void {
+		if (this.debugMode) {
+			console.log('[Converter]', ...args);
+		}
 	}
 
 	/**
@@ -160,7 +178,7 @@ export class MarkdownConverter {
 		const youtubePattern = /!\[([^\]]*)\]\((https?:\/\/(?:www\.)?(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)[^\)]*)\)/g;
 
 		return content.replace(youtubePattern, (match, altText, fullUrl, videoId) => {
-			console.log(`[Converter] Converting YouTube embed: ${videoId}`);
+			this.log(`Converting YouTube embed: ${videoId}`);
 
 			const title = altText || 'YouTube video';
 
@@ -259,26 +277,26 @@ export class MarkdownConverter {
 			const filename = cleanTarget.split('/').pop() || cleanTarget;
 			const displayText = display || filename.replace(/-/g, ' ');
 
-			console.log(`[Converter] Processing wiki-link: target="${target}" -> cleanTarget="${cleanTarget}", filename="${filename}"`);
-			console.log(`[Converter] pageSlugMap has "${filename}": ${options.pageSlugMap.has(filename)}`);
-			console.log(`[Converter] discussionTitleMap has "${filename}": ${options.discussionTitleMap.has(filename)}`);
+			this.log(`Processing wiki-link: target="${target}" -> cleanTarget="${cleanTarget}", filename="${filename}"`);
+			this.log(`pageSlugMap has "${filename}": ${options.pageSlugMap.has(filename)}`);
+			this.log(`discussionTitleMap has "${filename}": ${options.discussionTitleMap.has(filename)}`);
 
 			// Check if it's a page we know about
 			const slug = options.pageSlugMap.get(filename);
 			if (slug) {
-				console.log(`[Converter] Found page slug: "${slug}"`);
+				this.log(`Found page slug: "${slug}"`);
 				return `<a href="/courses/${options.courseId}/pages/${slug}" class="cs-link">${escapeHtml(displayText)}</a>`;
 			}
 
 			// Check if it's a discussion - create an actual link
 			const discussionId = options.discussionTitleMap.get(filename);
 			if (discussionId) {
-				console.log(`[Converter] Found discussion ID: ${discussionId}`);
+				this.log(`Found discussion ID: ${discussionId}`);
 				return `<a href="/courses/${options.courseId}/discussion_topics/${discussionId}" class="cs-link">${escapeHtml(displayText)}</a>`;
 			}
 
 			// Unknown link - return as styled text with visual indicator
-			console.log(`[Converter] Unknown link, returning plain text`);
+			this.log(`Unknown link, returning plain text`);
 			return `<em>${escapeHtml(displayText)}</em>`;
 		});
 	}
@@ -697,14 +715,14 @@ ${darkModeStyles}
 	private applyInlineStyles(html: string, css: string): string {
 		// Parse CSS rules (simple parser for class selectors)
 		const rules = this.parseCssRules(css);
-		console.log(`[Converter] Parsed ${rules.length} CSS rules for inline application`);
+		this.log(`Parsed ${rules.length} CSS rules for inline application`);
 
 		// Apply each rule to matching elements
 		const initialLength = html.length;
 		for (const rule of rules) {
 			html = this.applyRuleInline(html, rule.selector, rule.styles);
 		}
-		console.log(`[Converter] Inline styles applied: HTML grew from ${initialLength} to ${html.length} chars`);
+		this.log(`Inline styles applied: HTML grew from ${initialLength} to ${html.length} chars`);
 
 		return html;
 	}

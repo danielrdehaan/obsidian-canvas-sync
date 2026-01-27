@@ -922,6 +922,21 @@ export class CanvasApi {
 		);
 	}
 
+	/**
+	 * Delete a module item
+	 * Removes an item from a module without deleting the underlying content
+	 */
+	async deleteModuleItem(
+		courseId: number,
+		moduleId: number,
+		itemId: number
+	): Promise<void> {
+		await this.request<CanvasModuleItem>(
+			'DELETE',
+			`/courses/${courseId}/modules/${moduleId}/items/${itemId}`
+		);
+	}
+
 	// --- Syllabus ---
 
 	/**

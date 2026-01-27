@@ -44,6 +44,7 @@ const MIME_TYPES: Record<string, string> = {
 export class MediaParser {
 	private app: App;
 	private debugMode: boolean;
+	private allowedExternalPaths: string[] = [];
 
 	constructor(app: App, debugMode = false) {
 		this.app = app;
@@ -55,6 +56,54 @@ export class MediaParser {
 	 */
 	setDebugMode(debug: boolean): void {
 		this.debugMode = debug;
+	}
+
+	/**
+	 * Set allowed external paths for file access validation
+	 */
+	setAllowedExternalPaths(paths: string[]): void {
+		this.allowedExternalPaths = paths;
+	}
+
+	/**
+	 * Get the vault base path
+	 */
+	private getVaultBasePath(): string {
+		return (this.app.vault.adapter as unknown as { basePath: string }).basePath || '';
+	}
+
+	/**
+	 * Validate that an external path is safe to access
+	 * Prevents path traversal attacks and restricts access to allowed paths
+	 */
+	private validateExternalPath(absolutePath: string): void {
+		const path = require('path');
+
+		// Prevent path traversal with relative components - check BEFORE normalization
+		if (absolutePath.includes('..')) {
+			throw new Error(`Invalid path contains traversal: ${absolutePath}`);
+		}
+
+		const normalizedPath = path.normalize(absolutePath);
+
+		// Check if path is under the vault
+		const vaultBase = this.getVaultBasePath();
+		if (vaultBase && normalizedPath.startsWith(path.normalize(vaultBase))) {
+			// Path is under vault - allowed
+			return;
+		}
+
+		// Check if path is under any allowed external paths
+		const isAllowed = this.allowedExternalPaths.some(allowed => {
+			const normalizedAllowed = path.normalize(allowed);
+			// Ensure we match complete path segments, not partial prefixes
+			return normalizedPath.startsWith(normalizedAllowed + path.sep) ||
+				normalizedPath === normalizedAllowed;
+		});
+
+		if (!isAllowed) {
+			throw new Error(`Access denied: ${absolutePath} is outside allowed paths`);
+		}
 	}
 
 	/**
@@ -343,8 +392,10 @@ export class MediaParser {
 
 	/**
 	 * Read an external file's binary data from the filesystem
+	 * Validates path is within allowed directories before reading
 	 */
 	async readExternalFile(absolutePath: string): Promise<ArrayBuffer> {
+		this.validateExternalPath(absolutePath);
 		const fs = require('fs').promises;
 		const buffer = await fs.readFile(absolutePath);
 		return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
@@ -352,8 +403,14 @@ export class MediaParser {
 
 	/**
 	 * Check if an external file exists at the given absolute path
+	 * Validates path is within allowed directories before checking
 	 */
 	async externalFileExists(absolutePath: string): Promise<boolean> {
+		try {
+			this.validateExternalPath(absolutePath);
+		} catch {
+			return false;
+		}
 		const fs = require('fs').promises;
 		try {
 			await fs.access(absolutePath);
@@ -365,8 +422,14 @@ export class MediaParser {
 
 	/**
 	 * Get file stats for an external file
+	 * Validates path is within allowed directories before checking
 	 */
 	async getExternalFileStats(absolutePath: string): Promise<{ size: number } | null> {
+		try {
+			this.validateExternalPath(absolutePath);
+		} catch {
+			return null;
+		}
 		const fs = require('fs').promises;
 		try {
 			const stats = await fs.stat(absolutePath);

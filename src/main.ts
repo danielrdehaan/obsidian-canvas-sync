@@ -45,6 +45,15 @@ export default class CanvasSyncPlugin extends Plugin {
 	private dropboxCache: DropboxUploadCache = {};
 	private dropboxCodeVerifier: string | null = null;
 
+	/**
+	 * Log debug messages (only when debugMode is enabled)
+	 */
+	private log(...args: unknown[]): void {
+		if (this.settings?.debugMode) {
+			console.log('[Canvas Sync]', ...args);
+		}
+	}
+
 	constructor(app: App, manifest: PluginManifest) {
 		super(app, manifest);
 		this.settings = DEFAULT_SETTINGS;
@@ -129,12 +138,12 @@ export default class CanvasSyncPlugin extends Plugin {
 			await this.handleDropboxAuthCallback(params);
 		});
 
-		console.log('Canvas Sync plugin loaded');
+		this.log('Plugin loaded');
 	}
 
 	onunload(): void {
 		this.disableWatchMode();
-		console.log('Canvas Sync plugin unloaded');
+		this.log('Plugin unloaded');
 	}
 
 	async loadSettings(): Promise<void> {
@@ -835,7 +844,7 @@ export default class CanvasSyncPlugin extends Plugin {
 		this.updateStatusBar('Watching');
 
 		if (this.settings.debugMode) {
-			console.log('Canvas Sync: Watch mode enabled');
+			this.log('Watch mode enabled');
 		}
 	}
 
@@ -847,7 +856,7 @@ export default class CanvasSyncPlugin extends Plugin {
 		this.updateStatusBar('Idle');
 
 		if (this.settings.debugMode) {
-			console.log('Canvas Sync: Watch mode disabled');
+			this.log('Watch mode disabled');
 		}
 	}
 
@@ -1093,7 +1102,7 @@ export default class CanvasSyncPlugin extends Plugin {
 			}
 		} catch (error) {
 			// Ignore errors during revocation
-			console.log('Error revoking Dropbox access:', error);
+			this.log('Error revoking Dropbox access:', error);
 		}
 
 		// Clear auth from settings
@@ -1161,12 +1170,12 @@ export default class CanvasSyncPlugin extends Plugin {
 			if (!fs.existsSync(snippetsPath)) {
 				fs.mkdirSync(snippetsPath, { recursive: true });
 				if (this.settings.debugMode) {
-					console.log('Canvas Sync: Created snippets folder at', snippetsPath);
+					this.log('Created snippets folder at', snippetsPath);
 				}
 			}
 		} catch (error) {
 			if (this.settings.debugMode) {
-				console.log('Canvas Sync: Snippets folder creation:', error);
+				this.log('Snippets folder creation:', error);
 			}
 		}
 	}
@@ -1191,7 +1200,7 @@ export default class CanvasSyncPlugin extends Plugin {
 				.sort();
 
 			if (this.settings.debugMode) {
-				console.log('Canvas Sync: Discovered snippets:', cssFiles);
+				this.log('Discovered snippets:', cssFiles);
 			}
 
 			return cssFiles;
@@ -1208,8 +1217,8 @@ export default class CanvasSyncPlugin extends Plugin {
 		const snippetsPath = this.getSnippetsPath();
 		const enabledSnippets = this.settings.style.enabledSnippets;
 
-		console.log('Canvas Sync: Loading snippets from:', snippetsPath);
-		console.log('Canvas Sync: Enabled snippets:', enabledSnippets);
+		this.log('Loading snippets from:', snippetsPath);
+		this.log('Enabled snippets:', enabledSnippets);
 
 		if (enabledSnippets.length === 0) {
 			return '';
@@ -1219,12 +1228,12 @@ export default class CanvasSyncPlugin extends Plugin {
 
 		for (const snippet of enabledSnippets) {
 			const filePath = path.join(snippetsPath, snippet);
-			console.log('Canvas Sync: Attempting to load:', filePath);
+			this.log('Attempting to load:', filePath);
 
 			try {
 				if (fs.existsSync(filePath)) {
 					const content = fs.readFileSync(filePath, 'utf-8');
-					console.log(`Canvas Sync: Loaded ${snippet} (${content.length} chars)`);
+					this.log(`Loaded ${snippet} (${content.length} chars)`);
 					cssContents.push(`/* === ${snippet} === */\n${content}`);
 				} else {
 					console.warn(`Canvas Sync: Snippet file not found: ${filePath}`);
@@ -1235,7 +1244,7 @@ export default class CanvasSyncPlugin extends Plugin {
 		}
 
 		const result = cssContents.join('\n\n');
-		console.log('Canvas Sync: Total custom CSS length:', result.length);
+		this.log('Total custom CSS length:', result.length);
 		return result;
 	}
 }

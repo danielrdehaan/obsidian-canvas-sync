@@ -14,9 +14,27 @@ import type {
  */
 export class FrontmatterParser {
 	private app: App;
+	private debugMode: boolean;
 
-	constructor(app: App) {
+	constructor(app: App, debugMode = false) {
 		this.app = app;
+		this.debugMode = debugMode;
+	}
+
+	/**
+	 * Set debug mode
+	 */
+	setDebugMode(debug: boolean): void {
+		this.debugMode = debug;
+	}
+
+	/**
+	 * Log debug messages
+	 */
+	private log(...args: unknown[]): void {
+		if (this.debugMode) {
+			console.log('[Frontmatter]', ...args);
+		}
 	}
 
 	/**
@@ -28,7 +46,7 @@ export class FrontmatterParser {
 		const frontmatter = cache?.frontmatter ?? {};
 
 		// Debug: log frontmatter for troubleshooting
-		console.log(`[Frontmatter] Parsing ${file.basename}: cache exists=${!!cache}, frontmatter keys=${Object.keys(frontmatter).join(', ')}`);
+		this.log(`Parsing ${file.basename}: cache exists=${!!cache}, frontmatter keys=${Object.keys(frontmatter).join(', ')}`);
 
 		return {
 			path: file.path,
@@ -244,16 +262,16 @@ export class FrontmatterParser {
 	getEffectiveTitle(parsed: ParsedFile): string {
 		// Priority: canvas_title > title > generated
 		if (parsed.canvas.title) {
-			console.log(`[Frontmatter] Using canvas_title: ${parsed.canvas.title}`);
+			this.log(`Using canvas_title: ${parsed.canvas.title}`);
 			return parsed.canvas.title;
 		}
 		if (typeof parsed.frontmatter.title === 'string' && parsed.frontmatter.title.trim()) {
-			console.log(`[Frontmatter] Using frontmatter title: ${parsed.frontmatter.title}`);
+			this.log(`Using frontmatter title: ${parsed.frontmatter.title}`);
 			return parsed.frontmatter.title;
 		}
 		const generated = this.generateTitle(parsed.filename);
-		console.log(`[Frontmatter] Generated title from filename "${parsed.filename}": ${generated}`);
-		console.log(`[Frontmatter] frontmatter.title was: ${JSON.stringify(parsed.frontmatter.title)}`);
+		this.log(`Generated title from filename "${parsed.filename}": ${generated}`);
+		this.log(`frontmatter.title was: ${JSON.stringify(parsed.frontmatter.title)}`);
 		return generated;
 	}
 
@@ -294,7 +312,7 @@ export class FrontmatterParser {
 	async buildPageSlugMap(files: TFile[]): Promise<Map<string, string>> {
 		const map = new Map<string, string>();
 
-		console.log(`[Frontmatter] Building pageSlugMap for ${files.length} files`);
+		this.log(`Building pageSlugMap for ${files.length} files`);
 
 		for (const file of files) {
 			const parsed = await this.parseFile(file);
@@ -308,13 +326,13 @@ export class FrontmatterParser {
 					.replace(/[^a-z0-9]+/g, '-')
 					.replace(/^-+|-+$/g, '');
 				map.set(parsed.filename, slug);
-				console.log(`[Frontmatter] Added to pageSlugMap: "${parsed.filename}" -> "${slug}"`);
+				this.log(`Added to pageSlugMap: "${parsed.filename}" -> "${slug}"`);
 			} else {
-				console.log(`[Frontmatter] Skipped "${parsed.filename}" (type=${type})`);
+				this.log(`Skipped "${parsed.filename}" (type=${type})`);
 			}
 		}
 
-		console.log(`[Frontmatter] pageSlugMap has ${map.size} entries`);
+		this.log(`pageSlugMap has ${map.size} entries`);
 		return map;
 	}
 
@@ -325,7 +343,7 @@ export class FrontmatterParser {
 		const map = new Map<string, number>();
 		let id = 1;
 
-		console.log(`[Frontmatter] Building discussionTitleMap for ${files.length} files`);
+		this.log(`Building discussionTitleMap for ${files.length} files`);
 
 		for (const file of files) {
 			const parsed = await this.parseFile(file);
@@ -333,11 +351,11 @@ export class FrontmatterParser {
 
 			if (type === 'discussion' || type === 'graded_discussion') {
 				map.set(parsed.filename, id++);
-				console.log(`[Frontmatter] Added to discussionTitleMap: "${parsed.filename}" -> ${id - 1}`);
+				this.log(`Added to discussionTitleMap: "${parsed.filename}" -> ${id - 1}`);
 			}
 		}
 
-		console.log(`[Frontmatter] discussionTitleMap has ${map.size} entries`);
+		this.log(`discussionTitleMap has ${map.size} entries`);
 		return map;
 	}
 }

@@ -78,6 +78,19 @@ export class DropboxUploader {
 	}
 
 	/**
+	 * Default cache expiration time (7 days in milliseconds)
+	 */
+	private static readonly CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+	/**
+	 * Check if a cache entry has expired
+	 * Expired entries should be re-uploaded to ensure link validity
+	 */
+	private isCacheExpired(entry: DropboxCacheEntry): boolean {
+		return Date.now() - entry.uploadedAt > DropboxUploader.CACHE_MAX_AGE_MS;
+	}
+
+	/**
 	 * Log debug messages
 	 */
 	private log(...args: unknown[]): void {
@@ -307,17 +320,24 @@ export class DropboxUploader {
 		const cached = this.cache[cacheKey];
 
 		if (cached && cached.contentHash === contentHash) {
-			// Cache hit - file hasn't changed, verify link still works
-			this.log(`Cache hit for ${embed.filename}`);
-			const html = this.generateEmbedHtml(
-				cached.directUrl,
-				cached.sharedUrl,
-				file.name,
-				mediaType,
-				embed.altText,
-				embed.isLink
-			);
-			return { original: embed.raw, replacement: html };
+			// Check if cache has expired
+			if (this.isCacheExpired(cached)) {
+				this.log(`Cache expired for ${embed.filename}, re-uploading`);
+				delete this.cache[cacheKey];
+				// Fall through to upload
+			} else {
+				// Cache hit - file hasn't changed and not expired
+				this.log(`Cache hit for ${embed.filename}`);
+				const html = this.generateEmbedHtml(
+					cached.directUrl,
+					cached.sharedUrl,
+					file.name,
+					mediaType,
+					embed.altText,
+					embed.isLink
+				);
+				return { original: embed.raw, replacement: html };
+			}
 		}
 
 		// Upload the file
@@ -408,17 +428,24 @@ export class DropboxUploader {
 		const cached = this.cache[cacheKey];
 
 		if (cached && cached.contentHash === contentHash) {
-			// Cache hit - file hasn't changed
-			this.log(`Cache hit for external file ${embed.filename}`);
-			const html = this.generateEmbedHtml(
-				cached.directUrl,
-				cached.sharedUrl,
-				embed.filename,
-				mediaType,
-				embed.altText,
-				embed.isLink
-			);
-			return { original: embed.raw, replacement: html };
+			// Check if cache has expired
+			if (this.isCacheExpired(cached)) {
+				this.log(`Cache expired for external file ${embed.filename}, re-uploading`);
+				delete this.cache[cacheKey];
+				// Fall through to upload
+			} else {
+				// Cache hit - file hasn't changed and not expired
+				this.log(`Cache hit for external file ${embed.filename}`);
+				const html = this.generateEmbedHtml(
+					cached.directUrl,
+					cached.sharedUrl,
+					embed.filename,
+					mediaType,
+					embed.altText,
+					embed.isLink
+				);
+				return { original: embed.raw, replacement: html };
+			}
 		}
 
 		// Upload the file
