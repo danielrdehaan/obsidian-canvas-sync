@@ -33,7 +33,7 @@ export interface CanvasSyncSettings {
  * Default settings
  */
 export const DEFAULT_SETTINGS: CanvasSyncSettings = {
-	canvasApiUrl: 'https://canvas.colum.edu',
+	canvasApiUrl: '',
 	canvasApiToken: '',
 	courses: [],
 	sharedContentPaths: [],

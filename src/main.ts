@@ -468,7 +468,9 @@ export default class CanvasSyncPlugin extends Plugin {
 				}
 			} catch (error) {
 				failed++;
-				console.error(`Error syncing ${file.path}:`, error);
+				if (this.settings.debugMode) {
+					console.error(`Error syncing ${file.path}:`, error);
+				}
 			}
 		}
 
@@ -522,7 +524,9 @@ export default class CanvasSyncPlugin extends Plugin {
 			progressNotice.complete(successful, failed);
 		} catch (error) {
 			progressNotice.error(`Sync failed: ${error}`);
-			console.error('Sync error:', error);
+			if (this.settings.debugMode) {
+				console.error('Sync error:', error);
+			}
 		} finally {
 			this.endSync();
 		}
@@ -581,7 +585,9 @@ export default class CanvasSyncPlugin extends Plugin {
 			progressNotice.complete(totalSuccess, totalFailed);
 		} catch (error) {
 			progressNotice.error(`Sync failed: ${error}`);
-			console.error('Sync error:', error);
+			if (this.settings.debugMode) {
+				console.error('Sync error:', error);
+			}
 		} finally {
 			this.endSync();
 		}
@@ -653,7 +659,9 @@ export default class CanvasSyncPlugin extends Plugin {
 				globalProgress += courseTotals[i].total;
 			} catch (error) {
 				totalFailed++;
-				console.error(`Error syncing ${course.name}:`, error);
+				if (this.settings.debugMode) {
+					console.error(`Error syncing ${course.name}:`, error);
+				}
 				// Still advance progress on error
 				globalProgress += courseTotals[i].total;
 			}
@@ -703,7 +711,9 @@ export default class CanvasSyncPlugin extends Plugin {
 					failed += result.failed;
 				}
 			} catch (error) {
-				console.error(`Error syncing ${course.name}:`, error);
+				if (this.settings.debugMode) {
+					console.error(`Error syncing ${course.name}:`, error);
+				}
 				failed++;
 			}
 		}
@@ -1040,7 +1050,9 @@ export default class CanvasSyncPlugin extends Plugin {
 
 			new Notice('Please authorize Canvas Sync in your browser');
 		} catch (error) {
-			console.error('Dropbox auth error:', error);
+			if (this.settings.debugMode) {
+				console.error('Dropbox auth error:', error);
+			}
 			new Notice(`Failed to start Dropbox authorization: ${error}`);
 		}
 	}
@@ -1086,7 +1098,9 @@ export default class CanvasSyncPlugin extends Plugin {
 			// @ts-ignore - accessing private property
 			this.app.setting?.openTabById?.(this.manifest.id);
 		} catch (error) {
-			console.error('Dropbox token exchange error:', error);
+			if (this.settings.debugMode) {
+				console.error('Dropbox token exchange error:', error);
+			}
 			new Notice(`Failed to complete Dropbox authorization: ${error}`);
 		}
 	}
@@ -1205,7 +1219,9 @@ export default class CanvasSyncPlugin extends Plugin {
 
 			return cssFiles;
 		} catch (error) {
-			console.error('Canvas Sync: Error reading snippets folder:', error);
+			if (this.settings.debugMode) {
+				console.error('Canvas Sync: Error reading snippets folder:', error);
+			}
 			return [];
 		}
 	}
@@ -1239,7 +1255,9 @@ export default class CanvasSyncPlugin extends Plugin {
 					console.warn(`Canvas Sync: Snippet file not found: ${filePath}`);
 				}
 			} catch (error) {
-				console.error(`Canvas Sync: Error loading snippet ${snippet}:`, error);
+				if (this.settings.debugMode) {
+					console.error(`Canvas Sync: Error loading snippet ${snippet}:`, error);
+				}
 			}
 		}
 
